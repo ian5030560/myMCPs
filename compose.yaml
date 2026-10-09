@@ -1,0 +1,20 @@
+# Linux verification of the pinned dependency set.
+#   docker compose run --rm test       # install with -c requirements.txt, run pytest
+#   docker compose run --rm freeze     # list what Linux actually installed
+# Other Python version:  PYTHON_VERSION=3.10 docker compose run --rm --build test
+# See pip's live output:  docker compose --progress plain build test
+x-build: &build
+  context: .
+  dockerfile: docker/Dockerfile
+  args:
+    PYTHON_VERSION: ${PYTHON_VERSION:-3.12}
+
+services:
+  test:
+    build: *build
+    image: mymcps-test:py${PYTHON_VERSION:-3.12}
+
+  freeze:
+    build: *build
+    image: mymcps-test:py${PYTHON_VERSION:-3.12}
+    command: ["pip", "freeze", "--exclude", "mymcps"]

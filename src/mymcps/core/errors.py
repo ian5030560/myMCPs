@@ -1,0 +1,62 @@
+"""Exception hierarchy. Everything derives from ``ToolError`` so the agent sees the message."""
+
+from __future__ import annotations
+
+from mcp.server.mcpserver.exceptions import ToolError
+
+
+class MediaToolError(ToolError):
+    """Base class for all errors raised by mymcps tools."""
+
+
+class InputError(MediaToolError):
+    """Problem with a user-supplied file path or URL."""
+
+
+class InputNotFoundError(InputError):
+    pass
+
+
+class AccessDeniedError(InputError):
+    pass
+
+
+class DownloadError(InputError):
+    pass
+
+
+class ModelError(MediaToolError):
+    """Problem reported by a model provider (translated from LiteLLM)."""
+
+
+class AuthError(ModelError):
+    pass
+
+
+class ModelNotFoundError(ModelError):
+    pass
+
+
+class RateLimitError(ModelError):
+    pass
+
+
+class ProviderError(ModelError):
+    pass
+
+
+class UnsupportedCapabilityError(MediaToolError):
+    """The selected model cannot do what the tool needs."""
+
+
+class FFmpegError(MediaToolError):
+    pass
+
+
+class MissingExtraError(MediaToolError):
+    """An optional dependency group is not installed."""
+
+    def __init__(self, extra: str, package: str):
+        super().__init__(
+            f"'{package}' is not installed. Run: pip install \"mymcps[{extra}]\""
+        )

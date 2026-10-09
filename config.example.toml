@@ -1,0 +1,33 @@
+# Copy to ~/.mymcps/config.toml (or pass --config / set MYMCPS_CONFIG).
+# Every field is optional; with no file at all, API-key environment variables are enough.
+
+# ───── 1. Global settings ─────
+output_dir = ""              # empty = <system temp>/mymcps/<server>
+allowed_dirs = []            # empty = no restriction on readable/writable folders
+max_download_mb = 4096       # upper bound for URL downloads
+
+# ───── 2. Model aliases: name a "model + connection" bundle ─────
+[models.gpt-image]
+model = "openai/gpt-image-1"     # LiteLLM model string (provider/model)
+# key is read from OPENAI_API_KEY automatically
+
+[models.local-vl]                # self-hosted OpenAI-compatible endpoint
+model = "openai/qwen2.5-vl"
+api_base = "http://localhost:8000/v1"
+api_key_env = "LOCAL_API_KEY"    # env var holding the key (preferred over api_key)
+capabilities = ["vision"]        # vision / audio_input / video_input
+
+[models.local-vl.extra]          # passed to LiteLLM untouched
+timeout = 120
+
+# ───── 3. Per-server sections ─────
+[image_gen]
+default_model = "gpt-image"      # alias or a LiteLLM string
+# output_dir = "D:/ai-images"
+
+[video_watch]
+default_model = "gemini/gemini-2.5-flash"
+
+[audio_listen]
+default_model = "gemini/gemini-2.5-flash"   # Q&A, summary, translation
+transcription_model = "openai/whisper-1"    # speech-to-text
