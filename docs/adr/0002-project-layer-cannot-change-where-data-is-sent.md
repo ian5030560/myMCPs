@@ -1,0 +1,3 @@
+# The project layer cannot change where data is sent
+
+A project layer may choose which models a server uses and where it writes output, but it may not define providers, endpoints, keys or model passthrough parameters, and it expands only built-in variables. A project config can come from a repository the user merely cloned. If such a file could set an endpoint, it could send the user's keys and media to an attacker's server; if it could expand environment variables, it could put a secret into an output path that the agent then reads. Because of this rule the project layer never holds secrets, so it is safe to commit, and it is loaded only when named explicitly at registration, never discovered automatically.
