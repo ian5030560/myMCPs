@@ -52,6 +52,15 @@ Dependencies: `requirements.txt` pins every runtime dependency (used as a pip co
 - Server tests use the in-memory `mcp.Client(server.mcp)`; `test_server_smoke.py` also starts a real stdio subprocess.
 - `test_llm.py` checks that importing the servers does not load litellm and that a real litellm import writes nothing to stdout. Keep both true.
 
+## Commit messages
+
+Format: `TYPE: SUBJECT`, then an optional body and an optional footer, each separated by a blank line. Chinese or English; this project writes them in Traditional Chinese. Only commit when the user asks.
+
+- **Types** (capitalised): `Feat` new feature, `Modify` change to the requirements of an existing feature, `Fix` bug fix, `Docs` documentation only, `Style` formatting only, `Refactor` restructuring without changing logic, `Test` adding or refactoring tests, `Chore` build configuration, versions and other routine work, `Revert` undoing a commit (`revert: type(scope): subject (回覆版本：xxxx)`).
+- **Subject**: at most 50 characters, imperative and brief, no full stop at the end; capitalise the first letter when it is English.
+- **Body** (optional): say what changed and why, at most 72 characters per line.
+- **Footer** (optional): issue references such as `Resolves: #123`.
+
 ## Agent skills
 
 ### Issue tracker
