@@ -7,3 +7,5 @@ build/
 .ruff_cache/
 config.toml
 .env
+.agents
+.claude
