@@ -15,7 +15,7 @@ from urllib.parse import unquote, urlparse
 import httpx
 
 from .config import Settings
-from .errors import AccessDeniedError, DownloadError, InputNotFoundError
+from .errors import DownloadError, InputNotFoundError
 
 for _ext, _mime in {
     ".m4a": "audio/mp4", ".mkv": "video/x-matroska", ".webm": "video/webm",
@@ -60,18 +60,15 @@ class InputResolver:
             return await self._from_url(src)
         return self._from_path(src)
 
-    def check_access(self, path: Path) -> Path:
-        """Return the resolved path, or raise if it is outside ``allowed_dirs``."""
-        resolved = Path(path).expanduser().resolve()
-        allowed = [d.expanduser().resolve() for d in self._settings.allowed_dirs]
-        if allowed and not any(resolved.is_relative_to(d) for d in allowed):
-            raise AccessDeniedError(
-                f"{resolved} is outside the allowed directories: "
-                + ", ".join(str(d) for d in allowed))
-        return resolved
+    async def read_bytes(self, src: str) -> bytes:
+        """Resolve ``src``, read it fully, and clean up any temporary download."""
+        async with await self.resolve(src) as media:
+            return media.read_bytes()
 
     def _from_path(self, src: str) -> MediaInput:
-        path = self.check_access(Path(src))
+        # No folder restriction: which files the agent may touch is left to the agent
+        # and its MCP client (ADR 0001).
+        path = Path(src).expanduser().resolve()
         if not path.is_file():
             raise InputNotFoundError(f"File not found: {path}")
         return MediaInput(path, _guess_mime(path.name), path.stat().st_size)

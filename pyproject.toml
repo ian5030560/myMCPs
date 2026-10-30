@@ -33,9 +33,16 @@ dev = [
 ]
 
 [project.scripts]
-image-gen = "mymcps.image_gen.server:main"
-video-watch = "mymcps.video_watch.server:main"
-audio-listen = "mymcps.audio_listen.server:main"
+mymcps-image = "mymcps.image.server:main"
+mymcps-video = "mymcps.video.server:main"
+mymcps-audio = "mymcps.audio.server:main"
+
+# Every server is listed here under its own name, so the name rules and uniqueness can be
+# checked for all servers, including ones added later.
+[project.entry-points."mymcps.servers"]
+image = "mymcps.image.server:ImageServer"
+video = "mymcps.video.server:VideoServer"
+audio = "mymcps.audio.server:AudioServer"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mymcps"]

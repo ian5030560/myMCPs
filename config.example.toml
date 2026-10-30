@@ -1,33 +1,66 @@
 # Copy to ~/.mymcps/config.toml (or pass --config / set MYMCPS_CONFIG).
+# Optional layers on top: ~/.mymcps/<server>.toml (image.toml, ...) for one server, and a project
+# file named with --project-config (models and output folder only: no providers, endpoints or keys).
 # Every field is optional; with no file at all, API-key environment variables are enough.
 
 # ───── 1. Global settings ─────
-output_dir = ""              # empty = <system temp>/mymcps/<server>
-allowed_dirs = []            # empty = no restriction on readable/writable folders
+output_dir = ""              # empty = <system temp>/mymcps/<server>; try "~/mymcps/${SERVER}"
+#                            # a relative path is relative to this file, not the working directory
+#                            # (Windows: use forward slashes or single quotes: 'C:\Users\me')
 max_download_mb = 4096       # upper bound for URL downloads
 
-# ───── 2. Model aliases: name a "model + connection" bundle ─────
-[models.gpt-image]
-model = "openai/gpt-image-1"     # LiteLLM model string (provider/model)
-# key is read from OPENAI_API_KEY automatically
-
-[models.local-vl]                # self-hosted OpenAI-compatible endpoint
-model = "openai/qwen2.5-vl"
+# ───── 2. Providers: connection details, defined once and shared by several models ─────
+# Every model uses exactly one provider: the one its alias links to (`provider = "..."`), else
+# the one named after its vendor (the part of the model string before the slash), else LiteLLM's
+# standard environment variables (OPENAI_API_KEY, GEMINI_API_KEY, STABILITY_API_KEY, ...).
+[providers.local]                # not a vendor name: only aliases that link to it use it
+vendor = "openai"                # which vendor's API it speaks (OpenAI-compatible server)
 api_base = "http://localhost:8000/v1"
-api_key_env = "LOCAL_API_KEY"    # env var holding the key (preferred over api_key)
-capabilities = ["vision"]        # vision / audio_input / video_input
+api_key = "${LOCAL_API_KEY}"     # from the environment (unset = no key); a literal also works
 
-[models.local-vl.extra]          # passed to LiteLLM untouched
+[providers.local.extra]          # passed to LiteLLM untouched, for every model of this provider
 timeout = 120
 
-# ───── 3. Per-server sections ─────
-[image_gen]
-default_model = "gpt-image"      # alias or a LiteLLM string
-# output_dir = "D:/ai-images"
+# A provider named after a vendor applies to every model of that vendor, including raw strings:
+# [providers.stability]
+# api_base = "https://ai-proxy.corp/stability"
+# api_key = "..."
 
-[video_watch]
-default_model = "gemini/gemini-2.5-flash"
+# ───── 3. Model aliases: a short name for a model string, optionally linked to a provider ─────
+[models.gpt-image]
+model = "openai/gpt-image-2"     # LiteLLM model string (vendor/model)
 
-[audio_listen]
-default_model = "gemini/gemini-2.5-flash"   # Q&A, summary, translation
-transcription_model = "openai/whisper-1"    # speech-to-text
+[models.nano]                    # Gemini image model (no mask support; edit_image simulates it)
+model = "gemini/gemini-3.1-flash-image"
+
+[models.local-vl]                # self-hosted model reached through the provider above
+model = "openai/qwen2.5-vl"
+provider = "local"               # what a model can do is derived from LiteLLM's table
+
+[models.local-vl.extra]          # passed to LiteLLM untouched; wins over the provider's
+timeout = 300
+
+# ───── 4. Per-server sections: one model per job (there are no built-in defaults) ─────
+# Each value is a model alias from above or a LiteLLM string. A job left unset makes the
+# tool that needs it fail with a message naming the field; passing `model` in a call still works.
+[image]
+gen_model  = "gpt-image"                    # generate_image
+edit_model = "gpt-image"                    # edit_image
+# output_dir = "D:/ai-images"             # this server's output folder (overrides the one above)
+
+[video]
+watch_model = "gemini/gemini-2.5-flash"     # summaries, Q&A, timestamped analysis
+
+[audio]
+listen_model     = "gemini/gemini-2.5-flash"   # Q&A, summary, translation
+transcribe_model = "openai/whisper-1"          # speech to text
+
+# ───── 5. Other layers (separate files, same format) ─────
+# ~/.mymcps/image.toml: a server file, layered over this one for that server only. It may hold
+#   top-level settings, providers, models and its own [image] section.
+# <project>/.mymcps/image.toml, named with --project-config (absolute path): a project layer. It can
+#   set output_dir, its own section and models that give only `model` and `provider`, e.g.
+#       output_dir = "results"            # relative to that file
+#       [image]
+#       gen_model = "gpt-image"
+#   but never providers, endpoints, keys or environment variables, so it is safe to commit.

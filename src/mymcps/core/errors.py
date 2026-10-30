@@ -5,6 +5,18 @@ from __future__ import annotations
 from mcp.server.mcpserver.exceptions import ToolError
 
 
+class ConfigError(Exception):
+    """The configuration is invalid, so the server cannot start.
+
+    Not a tool error: it happens before any tool runs. ``problems`` holds every problem found,
+    each naming the file, section and field, and never a value from the file.
+    """
+
+    def __init__(self, problems: list[str]):
+        self.problems = list(problems)
+        super().__init__(chr(10).join(self.problems))
+
+
 class MediaToolError(ToolError):
     """Base class for all errors raised by mymcps tools."""
 
@@ -43,6 +55,15 @@ class RateLimitError(ModelError):
 
 class ProviderError(ModelError):
     pass
+
+
+class PurposeNotConfiguredError(MediaToolError):
+    """A tool needs a model for a purpose the user has not configured."""
+
+    def __init__(self, server: str, field: str, summary: str):
+        super().__init__(
+            f"No model is configured for {summary}. Set `{field}` in the "
+            f"[{server}] section of your config file, or pass `model` in the call.")
 
 
 class UnsupportedCapabilityError(MediaToolError):

@@ -3,7 +3,7 @@ import pytest
 import respx
 
 from mymcps.core.config import Settings
-from mymcps.core.errors import AccessDeniedError, DownloadError, InputNotFoundError
+from mymcps.core.errors import DownloadError, InputNotFoundError
 from mymcps.core.inputs import InputResolver
 
 
@@ -21,17 +21,13 @@ async def test_missing_file(tmp_path):
         await InputResolver(Settings()).resolve(str(tmp_path / "no.mp4"))
 
 
-async def test_allowed_dirs(tmp_path):
-    ok = tmp_path / "ok"
-    ok.mkdir()
-    (ok / "a.png").write_bytes(b"x")
-    (tmp_path / "b.png").write_bytes(b"x")
-    r = InputResolver(Settings(allowed_dirs=[ok]))
-    await r.resolve(str(ok / "a.png"))
-    with pytest.raises(AccessDeniedError):
-        await r.resolve(str(tmp_path / "b.png"))
-    with pytest.raises(AccessDeniedError):
-        await r.resolve(str(ok / ".." / "b.png"))  # traversal
+async def test_reads_files_anywhere_without_folder_restriction(tmp_path):
+    (tmp_path / "one").mkdir()
+    (tmp_path / "two").mkdir()
+    (tmp_path / "two" / "b.png").write_bytes(b"x")
+    r = InputResolver(Settings())
+    async with await r.resolve(str(tmp_path / "one" / ".." / "two" / "b.png")) as inp:
+        assert inp.path == (tmp_path / "two" / "b.png").resolve()
 
 
 @respx.mock

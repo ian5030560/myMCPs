@@ -1,6 +1,7 @@
 """Thin wrapper around LiteLLM. This is the ONLY module that imports ``litellm``.
 
-LiteLLM is imported lazily (server start-up and ``list_tools`` never pay for it) and with
+LiteLLM is imported lazily (importing a server, ``list_tools`` and a server with no model
+configured never pay for it; the startup purpose check does when a model is configured) and with
 stdout redirected to stderr so nothing can corrupt the stdio MCP transport.
 """
 
@@ -14,6 +15,7 @@ import sys
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
+from .abilities import TableEntry
 from .errors import (
     AuthError,
     ModelError,
@@ -21,18 +23,12 @@ from .errors import (
     ProviderError,
     RateLimitError,
 )
+from .vendors import STANDARD_KEY_VARS
 
 if TYPE_CHECKING:
     from .models import ResolvedModel
 
 log = logging.getLogger(__name__)
-
-# capability name -> litellm helper
-_CAPABILITY_HELPERS = {
-    "vision": "supports_vision",
-    "audio_input": "supports_audio_input",
-    "video_input": "supports_video_input",
-}
 
 # LiteLLM exception class name -> (our error, hint)
 _ERROR_MAP = {
@@ -40,12 +36,6 @@ _ERROR_MAP = {
     "PermissionDeniedError": (AuthError, "The API key lacks permission for this model."),
     "NotFoundError": (ModelNotFoundError, "Check the model name."),
     "RateLimitError": (RateLimitError, "Rate limit or quota exceeded; retry later."),
-}
-
-_KEY_HINTS = {
-    "openai": "OPENAI_API_KEY",
-    "gemini": "GEMINI_API_KEY",
-    "stability": "STABILITY_API_KEY",
 }
 
 
@@ -73,20 +63,30 @@ class LLMClient:
         return self._loaded
 
     # ── introspection ────────────────────────────────────────────────────
-    def get_provider(self, model: str) -> str:
+    def get_vendor(self, model: str) -> str:
+        """The vendor LiteLLM routes a model string to (for names without a ``vendor/`` prefix)."""
         try:
             return self._module.get_llm_provider(model)[1]
         except Exception:
             return model.split("/", 1)[0] if "/" in model else "unknown"
 
-    def supports(self, model: str, capability: str) -> bool | None:
-        helper = getattr(self._module, _CAPABILITY_HELPERS.get(capability, ""), None)
-        if helper is None:
-            return None
+    def table_entry(self, model: str) -> TableEntry | None:
+        """What LiteLLM's model table says about ``model``, or None if it is not in the table.
+
+        The table is read directly because LiteLLM's ``supports_*`` helpers answer "no" for models
+        they do not know. OpenAI models are listed without their ``openai/`` prefix.
+        """
         try:
-            return bool(helper(model))
+            table = self._module.model_cost
+            entry = table.get(model)
+            if entry is None and model.startswith("openai/"):
+                entry = table.get(model.removeprefix("openai/"))
         except Exception:
             return None
+        if not isinstance(entry, dict):
+            return None
+        return TableEntry(mode=entry.get("mode"), vision=bool(entry.get("supports_vision")),
+                          audio_input=bool(entry.get("supports_audio_input")))
 
     # ── calls ────────────────────────────────────────────────────────────
     async def complete(self, model: ResolvedModel, messages: list[dict], **kw: Any) -> Any:
@@ -113,7 +113,7 @@ class LLMClient:
                           **kw: Any) -> Any:
         with self._guard(model):
             return await self._module.acreate_file(
-                file=file, purpose=purpose, custom_llm_provider=model.provider,
+                file=file, purpose=purpose, custom_llm_provider=model.vendor,
                 **model.call_kwargs(), **kw)
 
     # ── error translation ────────────────────────────────────────────────
@@ -131,8 +131,14 @@ class LLMClient:
         for cls in type(exc).__mro__:
             if cls.__name__ in _ERROR_MAP:
                 err_cls, hint = _ERROR_MAP[cls.__name__]
-                if err_cls is AuthError and model.provider in _KEY_HINTS:
-                    hint = f"Set the {_KEY_HINTS[model.provider]} environment variable."
+                if err_cls is AuthError:
+                    if model.provider.api_key:
+                        hint = f"Check the api_key of provider `{model.provider.name}`."
+                    elif model.provider.key_variable:
+                        hint = (f"Set the {model.provider.key_variable} environment variable "
+                                f"(the api_key of provider `{model.provider.name}`).")
+                    elif model.vendor in STANDARD_KEY_VARS:
+                        hint = f"Set the {STANDARD_KEY_VARS[model.vendor]} environment variable."
                 return err_cls(f"{model.model}: {_short(exc)} ({hint})")
         return ProviderError(f"{model.model}: {_short(exc)}")
 

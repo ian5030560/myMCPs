@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import secrets
 import tempfile
-from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -13,28 +12,48 @@ from mcp.server.mcpserver import Image
 from PIL import Image as PILImage
 
 from .config import Settings
+from .errors import AccessDeniedError
 
 
 class OutputManager:
-    def __init__(self, settings: Settings, server_name: str,
-                 access_checker: Callable[[Path], Path] | None = None):
+    def __init__(self, settings: Settings, server_name: str):
         self._settings = settings
         self._server = server_name
-        self._check = access_checker or (lambda p: p.expanduser().resolve())
 
-    def directory(self, override: str | None = None) -> Path:
+    def base_directory(self) -> Path:
+        """The configured output folder: the server's section, else the global value, else temp."""
         section = self._settings.section(self._server)
-        chosen = (override or section.output_dir or self._settings.output_dir)
+        chosen = section.output_dir or self._settings.output_dir
         path = Path(chosen) if chosen else Path(tempfile.gettempdir()) / "mymcps" / self._server
-        path = self._check(path)
+        return path.expanduser().resolve()
+
+    def directory(self, subfolder: str | None = None) -> Path:
+        """The folder to write into; ``subfolder`` is a tool argument chosen by the agent.
+
+        The agent may only pick a subfolder *inside* the configured output folder, so the
+        server never writes elsewhere. Moving results is left to the agent's own file tools.
+        """
+        base = self.base_directory()
+        path = base
+        if subfolder:
+            wanted = Path(subfolder)
+            if wanted.anchor:  # absolute, rooted ("/x"), or drive-relative ("C:x")
+                raise AccessDeniedError(
+                    "output_dir must be a relative path inside the output folder, "
+                    f"got '{subfolder}'.")
+            path = (base / wanted).resolve()
+            if not path.is_relative_to(base):
+                raise AccessDeniedError(
+                    f"output_dir '{subfolder}' escapes the output folder; "
+                    "use a plain subfolder name.")
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     def save(self, data: bytes, ext: str, prefix: str = "out",
-             override_dir: str | None = None) -> Path:
+             subfolder: str | None = None) -> Path:
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         name = f"{prefix}-{stamp}-{secrets.token_hex(3)}.{ext.lstrip('.')}"
-        path = self.directory(override_dir) / name
+        path = self.directory(subfolder) / name
         path.write_bytes(data)
         return path
 

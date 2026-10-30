@@ -13,4 +13,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && pip check
 
 COPY tests ./tests
+# The tests check that the shipped example config stays valid.
+COPY config.example.toml ./
 CMD ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider"]

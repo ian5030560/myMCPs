@@ -1,4 +1,4 @@
-"""ffmpeg helpers shared by video-watch and audio-listen (bundled imageio-ffmpeg binary)."""
+"""ffmpeg helpers shared by the video and audio servers (bundled imageio-ffmpeg binary)."""
 
 from __future__ import annotations
 
