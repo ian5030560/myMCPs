@@ -11,6 +11,7 @@ import contextlib
 import importlib
 import logging
 import os
+import re
 import sys
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
@@ -29,6 +30,10 @@ if TYPE_CHECKING:
     from .models import ResolvedModel
 
 log = logging.getLogger(__name__)
+
+# LiteLLM reports a missing key as APIConnectionError("GEMINI_API_KEY is not set"), not as an
+# authentication error, so it is recognised by its message.
+_KEY_MISSING = re.compile(r"api[_ ]?key.{0,40}(not set|missing|not provided|required)", re.I)
 
 # LiteLLM exception class name -> (our error, hint)
 _ERROR_MAP = {
@@ -128,21 +133,29 @@ class LLMClient:
 
     @staticmethod
     def _translate_error(exc: Exception, model: ResolvedModel) -> ModelError:
+        text = _short(exc)
         for cls in type(exc).__mro__:
             if cls.__name__ in _ERROR_MAP:
                 err_cls, hint = _ERROR_MAP[cls.__name__]
-                if err_cls is AuthError:
-                    if model.provider.api_key:
-                        hint = f"Check the api_key of provider `{model.provider.name}`."
-                    elif model.provider.key_variable:
-                        hint = (f"Set the {model.provider.key_variable} environment variable "
-                                f"(the api_key of provider `{model.provider.name}`).")
-                    elif model.vendor in STANDARD_KEY_VARS:
-                        hint = f"Set the {STANDARD_KEY_VARS[model.vendor]} environment variable."
-                return err_cls(f"{model.model}: {_short(exc)} ({hint})")
-        return ProviderError(f"{model.model}: {_short(exc)}")
+                break
+        else:
+            if not _KEY_MISSING.search(text):
+                return ProviderError(f"{model.model}: {text}")
+            err_cls, hint = _ERROR_MAP["AuthenticationError"]
+        if err_cls is AuthError:
+            if model.provider.api_key:
+                hint = f"Check the api_key of provider `{model.provider.name}`."
+            elif model.provider.key_variable:
+                hint = (f"Set the {model.provider.key_variable} environment variable "
+                        f"(the api_key of provider `{model.provider.name}`).")
+            elif model.vendor in STANDARD_KEY_VARS:
+                hint = f"Set the {STANDARD_KEY_VARS[model.vendor]} environment variable."
+        return err_cls(f"{model.model}: {text} ({hint})")
 
 
 def _short(exc: Exception, limit: int = 500) -> str:
-    text = str(exc).strip() or type(exc).__name__
+    """The message for the agent: LiteLLM sometimes embeds a whole traceback in it, which is
+    noise (and would be cut off mid-line), so only the text before it is kept."""
+    text = str(exc).split("Traceback (most recent call last)")[0].strip()
+    text = text or type(exc).__name__
     return text if len(text) <= limit else text[:limit] + "…"

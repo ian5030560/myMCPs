@@ -27,12 +27,20 @@ class OutputManager:
         path = Path(chosen) if chosen else Path(tempfile.gettempdir()) / "mymcps" / self._server
         return path.expanduser().resolve()
 
-    def directory(self, subfolder: str | None = None) -> Path:
-        """The folder to write into; ``subfolder`` is a tool argument chosen by the agent.
+    def validate(self, subfolder: str | None) -> None:
+        """Raise if ``subfolder`` is not allowed. Tools call this *before* paying for a model call,
+        so a bad ``output_dir`` argument costs nothing. Creates nothing."""
+        self._resolve(subfolder)
 
-        The agent may only pick a subfolder *inside* the configured output folder, so the
-        server never writes elsewhere. Moving results is left to the agent's own file tools.
-        """
+    def directory(self, subfolder: str | None = None) -> Path:
+        """The folder to write into; ``subfolder`` is a tool argument chosen by the agent."""
+        path = self._resolve(subfolder)
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def _resolve(self, subfolder: str | None) -> Path:
+        """The agent may only pick a subfolder *inside* the configured output folder, so the
+        server never writes elsewhere. Moving results is left to the agent's own file tools."""
         base = self.base_directory()
         path = base
         if subfolder:
@@ -46,7 +54,6 @@ class OutputManager:
                 raise AccessDeniedError(
                     f"output_dir '{subfolder}' escapes the output folder; "
                     "use a plain subfolder name.")
-        path.mkdir(parents=True, exist_ok=True)
         return path
 
     def save(self, data: bytes, ext: str, prefix: str = "out",

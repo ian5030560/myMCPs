@@ -43,3 +43,14 @@ async def test_model_alias_supplies_connection_settings(make_ctx, fake_litellm):
     await ImageGenerator(ctx).generate("a cat", model="mine")
     kw = fake_litellm.calls[0][1]
     assert (kw["model"], kw["api_base"], kw["timeout"]) == ("openai/local-img", "http://x/v1", 9)
+
+
+async def test_a_bad_output_dir_is_rejected_before_any_model_call(ctx, fake_litellm, tmp_path):
+    import pytest
+
+    from mymcps.core.errors import AccessDeniedError
+
+    for bad in ("../elsewhere", str(tmp_path.resolve())):
+        with pytest.raises(AccessDeniedError):
+            await ImageGenerator(ctx).generate("a cat", output_dir=bad)
+    assert fake_litellm.calls == []

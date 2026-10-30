@@ -81,3 +81,11 @@ async def test_mask_on_unsupported_provider(ctx, fake_litellm, photo, mask_file)
     with pytest.raises(UnsupportedCapabilityError, match="masks"):
         await ImageEditor(ctx).edit(str(photo), "x", mask=str(mask_file),
                                     model="black_forest_labs/flux-kontext-pro")
+
+
+async def test_a_bad_output_dir_is_rejected_before_any_model_call(ctx, fake_litellm, photo):
+    from mymcps.core.errors import AccessDeniedError
+
+    with pytest.raises(AccessDeniedError):
+        await ImageEditor(ctx).edit(str(photo), "x", output_dir="../elsewhere")
+    assert fake_litellm.calls == []

@@ -104,3 +104,11 @@ async def test_an_alias_called_stability_is_just_an_alias(make_ctx, fake_litellm
     fake_litellm.response = image_response(png_bytes())
     await StabilityEditor(ctx).run("upscale_fast", str(photo))
     assert "timeout" not in fake_litellm.calls[0][1]
+
+
+async def test_a_bad_output_dir_is_rejected_before_any_model_call(ctx, fake_litellm, photo):
+    from mymcps.core.errors import AccessDeniedError
+
+    with pytest.raises(AccessDeniedError):
+        await StabilityEditor(ctx).run("remove_background", str(photo), output_dir="../elsewhere")
+    assert fake_litellm.calls == []

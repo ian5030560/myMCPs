@@ -26,6 +26,7 @@ class ImageEditor:
                    references: list[str] | None = None, model: str | None = None,
                    n: int = 1, size: str | None = None,
                    output_dir: str | None = None) -> list[Path]:
+        self._ctx.outputs.validate(output_dir)      # before the paid call, not after it
         resolved = self._ctx.models.resolve("edit", model)
         original = await self._ctx.inputs.read_bytes(image)
         refs = [await self._ctx.inputs.read_bytes(r) for r in references or []]

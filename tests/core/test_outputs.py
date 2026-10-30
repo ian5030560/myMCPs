@@ -90,3 +90,13 @@ def test_variables_are_never_expanded_in_the_output_dir_argument(settings, tmp_p
     folder = OutputManager(settings, "image").directory("${OPENAI_API_KEY}")
     assert folder.name == "${OPENAI_API_KEY}" and "sk-secret" not in str(folder)
     assert OutputManager(settings, "image").directory("~").name == "~"
+
+
+def test_validate_rejects_a_bad_subfolder_and_creates_nothing(settings, tmp_path):
+    outputs = OutputManager(settings, "image")
+    for bad in ("../x", str(tmp_path.resolve())):
+        with pytest.raises(AccessDeniedError):
+            outputs.validate(bad)
+    outputs.validate("fine")
+    outputs.validate(None)
+    assert not (tmp_path / "out").exists()

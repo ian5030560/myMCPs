@@ -90,6 +90,7 @@ class StabilityEditor:
                 f"'{operation}' needs at least one of {', '.join(op.require_any)} to be > 0 "
                 "(pixels to extend).")
 
+        self._ctx.outputs.validate(output_dir)      # before the paid call, not after it
         original = await self._ctx.inputs.read_bytes(image)
         kwargs: dict = {"drop_params": True}
         for name in op.accepted:

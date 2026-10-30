@@ -85,3 +85,35 @@ def test_real_litellm_import_is_silent_on_stdout():
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert r.stdout == ""
+
+
+class APIConnectionError(Exception):
+    pass
+
+
+TRACEBACK = ("litellm.APIConnectionError: GEMINI_API_KEY is not set\n"
+             "Traceback (most recent call last):\n  File \"x.py\", line 1, in f\n    boom()")
+
+
+async def test_a_missing_key_reported_as_a_connection_error_becomes_an_auth_error(
+        llm, fake_litellm):
+    fake_litellm.raises = APIConnectionError(TRACEBACK)
+    with pytest.raises(AuthError, match="GEMINI_API_KEY environment variable") as err:
+        await llm.generate_image(resolved(llm, "gemini/gemini-3.1-flash-image"), "a cat")
+    assert "Traceback" not in str(err.value) and "x.py" not in str(err.value)
+
+
+async def test_a_missing_key_names_the_providers_variable_when_it_has_one(llm, fake_litellm):
+    fake_litellm.raises = APIConnectionError("LOCAL_KEY api_key is not set")
+    model = resolved(llm, "openai/x", provider=ProviderSpec(vendor="openai", api_key="k"))
+    with pytest.raises(AuthError, match="provider `p`"):
+        await llm.complete(model, [])
+
+
+async def test_other_errors_lose_an_embedded_traceback_too(llm, fake_litellm):
+    fake_litellm.raises = APIConnectionError(
+        "connection refused\nTraceback (most recent call last):\n  File \"x.py\"")
+    with pytest.raises(ProviderError) as err:
+        await llm.complete(resolved(llm), [])
+    assert str(err.value).endswith("connection refused")
+    assert not isinstance(err.value, AuthError)
