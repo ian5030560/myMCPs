@@ -9,11 +9,11 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The convention contains the record template and every rule listed above
-- [ ] The record for 2026-10-30 exists, lists exactly the image checklist's IDs, and has a complete header
-- [ ] The old image document no longer exists and nothing links to it
-- [ ] The docs check passes on the real record
-- [ ] The docs check fails on test-built records with a missing ID, an extra ID, a bad file name, an unknown server, an invalid result value, a ❌ without an issue link, and a ⏭ without a reason
-- [ ] `ruff check .` and `pytest` pass
+- [x] The convention contains the record template and every rule listed above
+- [x] The record for 2026-10-30 exists, lists exactly the image checklist's IDs, and has a complete header
+- [x] The old image document no longer exists and nothing links to it
+- [x] The docs check passes on the real record
+- [x] The docs check fails on test-built records with a missing ID, an extra ID, a bad file name, an unknown server, an invalid result value, a ❌ without an issue link, and a ⏭ without a reason
+- [x] `ruff check .` and `pytest` pass

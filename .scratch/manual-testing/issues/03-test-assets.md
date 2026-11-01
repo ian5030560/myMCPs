@@ -8,10 +8,10 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The photo and the mask are committed, small, and 512×512
-- [ ] The checklist and how-to refer to them and no longer describe preparing images
-- [ ] The docs check passes on the real assets
-- [ ] The docs check fails on test-built assets with a size mismatch and with the mask mirrored left to right
-- [ ] `ruff check .` and `pytest` pass
+- [x] The photo and the mask are committed, small, and 512×512
+- [x] The checklist and how-to refer to them and no longer describe preparing images
+- [x] The docs check passes on the real assets
+- [x] The docs check fails on test-built assets with a size mismatch and with the mask mirrored left to right
+- [x] `ruff check .` and `pytest` pass

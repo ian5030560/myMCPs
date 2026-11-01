@@ -10,12 +10,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The convention exists, is in English, and contains the checklist template and every rule listed above
-- [ ] The shared how-to names the Inspector version, the three pitfalls, and how to pass and withhold keys
-- [ ] The image checklist carries every check from the old image document under `#N` IDs, with a requirements value on each and no status column
-- [ ] `CLAUDE.md` points to the convention and the README links to the manual-testing folder
-- [ ] The docs check passes on the real image checklist
-- [ ] The docs check fails on test-built checklists with a duplicate ID, a malformed ID, and an empty requirements cell (fixtures are built in temporary directories by the test)
-- [ ] `ruff check .` and `pytest` pass
+- [x] The convention exists, is in English, and contains the checklist template and every rule listed above
+- [x] The shared how-to names the Inspector version, the three pitfalls, and how to pass and withhold keys
+- [x] The image checklist carries every check from the old image document under `#N` IDs, with a requirements value on each and no status column
+- [x] `CLAUDE.md` points to the convention and the README links to the manual-testing folder
+- [x] The docs check passes on the real image checklist
+- [x] The docs check fails on test-built checklists with a duplicate ID, a malformed ID, and an empty requirements cell (fixtures are built in temporary directories by the test)
+- [x] `ruff check .` and `pytest` pass
