@@ -304,6 +304,7 @@ Project documents:
 
 - [GLOSSARY.md](GLOSSARY.md): the project's vocabulary.
 - [docs/adr/](docs/adr/): architecture decisions and why they were made.
+- [docs/manual-testing/](docs/manual-testing/): checks against real providers that the mock tests cannot make.
 - `.scratch/`: specs and issues (local markdown tracker, see [docs/agents/](docs/agents/)).
 
 ## Security

@@ -74,3 +74,7 @@ Default five-label vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, 
 ### Domain docs
 
 Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Manual testing
+
+Checks that mocks cannot prove (real APIs, stdio, platforms) live in checklists under `docs/manual-testing/`, one per server, with stable `#N` item IDs. Read `docs/agents/manual-testing.md` before creating or changing one.
