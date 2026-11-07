@@ -53,3 +53,17 @@ _Avoid_: Path variable, placeholder, macro
 **Mask**:
 A black-and-white image the same shape as the image being edited; white marks the area to change and black the area to keep.
 _Avoid_: Stencil, alpha map
+
+### Audio
+
+**Transcript**:
+The text that transcription produces from speech, optionally with a timestamp before each segment.
+_Avoid_: Caption, subtitle
+
+**Segment**:
+A short timed piece of a transcript as the model returns it, with its start time.
+_Avoid_: Chunk, fragment
+
+**Chunk**:
+A piece cut from a longer recording so that each request stays within a vendor's limits.
+_Avoid_: Segment, part, slice
