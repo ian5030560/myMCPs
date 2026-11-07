@@ -2,7 +2,7 @@
 
 自動測試只用 mock，無法證明伺服器真的能和供應商一起運作。這個資料夾記錄那些 mock 測不到的檢查。撰寫規則見 [docs/agents/manual-testing.md](../agents/manual-testing.md)。
 
-- 每個有呼叫模型的工具的伺服器，各有一份清單：[image.md](image.md)。
+- 每個有呼叫模型的工具的伺服器，各有一份清單：[image.md](image.md)、[audio.md](audio.md)。
 - 這份文件是所有伺服器共用的操作說明。
 
 ## 使用 MCP Inspector
