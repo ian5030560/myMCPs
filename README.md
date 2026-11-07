@@ -6,7 +6,7 @@ MCP servers for AI agents (Claude Code, Claude Cowork, Codex, OpenClaw, ...):
 |---|---|---|
 | `mymcps-image` | Generate and edit images (OpenAI, Gemini/Imagen, Stability, ...) | Available |
 | `mymcps-video` | Summaries, Q&A, timestamped analysis and frame extraction for videos | Planned (only `list_models` today) |
-| `mymcps-audio` | Transcription, Q&A, summaries and translation for audio | Planned (only `list_models` today) |
+| `mymcps-audio` | Transcription, Q&A, summaries and translation for audio | Available |
 
 All model calls go through [LiteLLM](https://docs.litellm.ai/), so any `provider/model` string works.
 
@@ -41,6 +41,41 @@ Not available through Stability: `style`, `style-transfer`, `replace-background-
 support Stability's asynchronous API).
 
 The image tools have only been tested against a mocked LiteLLM; real API calls are not verified yet.
+
+## Audio server tools
+
+| Tool | What it does |
+|---|---|
+| `transcribe_audio` | Speech to text with the `transcribe_model` you configured. `path`, `start`, `end`, `language`, `timestamps`, `model`. |
+| `listen_audio` | Answers a question about a recording with the `listen_model` you configured (who speaks, tone, music, summaries, translation). `path`, `prompt`, `start`, `end`, `timestamps`, `model`. |
+| `list_models` | The model each job uses (or "not configured") and the configured aliases; never shows keys. |
+
+`path` is a local audio or video file, or an http(s) URL. `start` and `end` take seconds, `mm:ss` or
+`hh:mm:ss` and limit the work to part of the recording. Neither tool writes files; the result is text.
+
+Both tools first check the input and convert it to mono 16 kHz 32 kbps mp3, so a bad file fails
+before any paid call and most recordings fit one request (about 83 minutes for Gemini's 20 MB inline
+limit, about 104 minutes for OpenAI's 25 MB).
+
+- **`transcribe_audio`** splits a recording that is still too big into chunks, cutting at the silence
+  nearest each target length so words are not cut in half, and moves segment times back onto the
+  original recording. A chunk the provider rejects is marked in the transcript as
+  `[not transcribed hh:mm:ss-hh:mm:ss: reason]`; it is never dropped silently. `timestamps` puts
+  `[hh:mm:ss]` before each line (sentence times from models that give them, such as `openai/whisper-1`;
+  word times, grouped into lines at pauses over 0.8 s or after 10 s, from Gemini's transcription
+  models) and fails if the model returns no times.
+- **`listen_audio`** never splits a recording, because only the agent knows whether its question
+  survives being split. Over Gemini's inline limit it uploads the audio through the Files API and
+  deletes it after the answer. Over the 9.5 hour limit it fails with two ways forward: work through
+  the recording in order with `start`/`end`, carrying notes into each next `prompt`, or call
+  `transcribe_audio` first. With `timestamps` the model is asked to cite `[hh:mm:ss]`, which are then
+  moved onto the original recording; it fails if the answer contains none.
+
+Vendor limits live in one table in `src/mymcps/audio/limits.py`; the reasons for this design are in
+[ADR 0005](docs/adr/0005-long-audio-compress-first-split-only-transcription.md).
+
+The audio tools have only been tested against a mocked LiteLLM. What still has to be checked against
+real providers is listed in [docs/manual-testing/audio.md](docs/manual-testing/audio.md).
 
 ## Install
 
