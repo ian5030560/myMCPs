@@ -85,6 +85,52 @@ async def test_a_recording_that_fits_is_not_split(server, fake_litellm, tone, sm
     assert len(fake_litellm.transcriptions) == 1
 
 
+async def test_a_duration_limit_splits_a_recording_that_fits_the_size_limit(
+        server, fake_litellm, describe, long_audio, monkeypatch):
+    """25 s is far below the size limit, but one request takes at most 10 s of audio."""
+    from mymcps.audio import limits
+    monkeypatch.setitem(limits.LIMITS, "openai", limits.VendorLimits(
+        transcribe_bytes=25_000_000, transcribe_seconds=10))
+    three_chunks(fake_litellm)
+    result = await transcribe(server, path=str(long_audio))
+    assert not result.is_error and len(fake_litellm.transcriptions) == 3
+    durations = [describe(data)[1] for data in fake_litellm.transcriptions]
+    assert durations == pytest.approx([8.55, 8.55, 7.9], abs=0.25)
+    assert all(d <= 10 for d in durations)
+
+
+async def test_a_recording_within_the_duration_limit_is_not_split(
+        server, fake_litellm, tone, monkeypatch):
+    from mymcps.audio import limits
+    monkeypatch.setitem(limits.LIMITS, "openai", limits.VendorLimits(transcribe_seconds=10))
+    await transcribe(server, path=str(tone))            # 6 s
+    assert len(fake_litellm.transcriptions) == 1
+
+
+async def test_asking_for_times_uses_the_shorter_duration_limit(
+        server, fake_litellm, long_audio, monkeypatch):
+    """Gemini takes 1 hour per request, but only 30 minutes when word times are asked for."""
+    from mymcps.audio import limits
+    monkeypatch.setitem(limits.LIMITS, "openai", limits.VendorLimits(
+        transcribe_seconds=100, timed_transcribe_seconds=10))
+    await transcribe(server, path=str(long_audio))              # 25 s, no times: one request
+    assert len(fake_litellm.transcriptions) == 1
+    three_chunks(fake_litellm)
+    await transcribe(server, path=str(long_audio), timestamps=True)
+    assert len(fake_litellm.transcriptions) == 1 + 3
+
+
+def test_gemini_limits_follow_the_model_documentation():
+    from mymcps.audio import limits
+    gemini = limits.limits_for("gemini")
+    assert gemini.transcribe_seconds == 3600
+    assert gemini.timed_transcribe_seconds == 1800
+    # 25 tokens a second against 98,304 input tokens: a full hour still fits
+    assert gemini.transcribe_seconds * 25 < 98_304
+    # the size limit alone (20 MB, 83 minutes) would let a chunk through that is too long
+    assert gemini.transcribe_bytes / 4000 > gemini.transcribe_seconds
+
+
 async def test_a_vendor_without_a_known_limit_is_never_split(
         server, fake_litellm, long_audio, small_requests):
     result = await transcribe(server, path=str(long_audio), model="mistral/voxtral-mini-latest")

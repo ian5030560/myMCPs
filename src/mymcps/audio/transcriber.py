@@ -48,9 +48,12 @@ class Transcriber:
             kw["language"] = language
         if timestamps:
             kw.update(_timing_params(resolved.vendor))
-        limit = limits_for(resolved.vendor).transcribe_bytes
+        limits = limits_for(resolved.vendor)
         async with prepare(self._ctx, source, start, end) as audio:
-            pieces = await self._pieces(audio, limit)
+            seconds = limits.transcribe_seconds
+            if timestamps and limits.timed_transcribe_seconds is not None:
+                seconds = limits.timed_transcribe_seconds
+            pieces = await self._pieces(audio, limits.transcribe_bytes, seconds)
             try:
                 parts = await self._run(resolved, pieces, audio, kw, timestamps)
             finally:
@@ -62,13 +65,25 @@ class Transcriber:
             return mark_segments(parts, audio.offset)
         return "\n".join(text for _, text in parts)
 
-    async def _pieces(self, audio: PreparedAudio, limit: int | None) -> list[_Piece]:
-        """The whole audio when it fits one request, else chunks cut at silence."""
+    async def _pieces(self, audio: PreparedAudio, max_bytes: int | None,
+                      max_seconds: float | None) -> list[_Piece]:
+        """The whole audio when it fits one request, else chunks cut at silence.
+
+        A request is limited by file size, by duration, or both; a chunk must respect the
+        tighter one. A limit that is not known cuts nothing.
+        """
         whole = [_Piece(audio.path, 0.0, audio.duration)]
-        if limit is None or audio.size <= limit:
+        too_big = max_bytes is not None and audio.size > max_bytes
+        too_long = max_seconds is not None and audio.duration > max_seconds * SIZE_MARGIN
+        if not (too_big or too_long):
             return whole
         ffmpeg = self._ctx.ffmpeg
-        longest = limit * SIZE_MARGIN / BYTES_PER_SECOND
+        allowed = []
+        if max_bytes is not None:
+            allowed.append(max_bytes * SIZE_MARGIN / BYTES_PER_SECOND)
+        if max_seconds is not None:
+            allowed.append(max_seconds * SIZE_MARGIN)
+        longest = min(allowed)
         silences = await ffmpeg.detect_silences(audio.path)
         chunks = plan_chunks(audio.duration, silences, longest * TARGET_SHARE, longest)
         if len(chunks) < 2:
