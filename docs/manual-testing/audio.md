@@ -63,7 +63,7 @@ gzip -dc head.tar.gz | tar -x --wildcards '*/validated.tsv' '*/clip_durations.ts
 
 ### 長錄音（不提交，每次現做）
 
-分 chunk 與 Files API 的項目需要超過 Gemini 單次上限的錄音：壓縮成 32 kbps 後超過 20 MB，約 83 分鐘以上。做法是取 LJ Speech 壓縮檔開頭的幾段，接成約 90 分鐘（內容不重複，也有現成的標準逐字稿）。在一個新的空資料夾裡執行（`ffmpeg` 用 `.venv` 裡 `imageio_ffmpeg` 附的那一個）：
+分 chunk 與 Files API 的項目需要超過 Gemini 單次上限的錄音：轉錄超過 1 小時（要時間則超過 30 分鐘）會分 chunk，聆聽超過 20 MB（壓縮成 32 kbps 後約 83 分鐘）走 Files API，所以做約 90 分鐘的就兩者都涵蓋。做法是取 LJ Speech 壓縮檔開頭的幾段，接成約 90 分鐘（內容不重複，也有現成的標準逐字稿）。在一個新的空資料夾裡執行（`ffmpeg` 用 `.venv` 裡 `imageio_ffmpeg` 附的那一個）：
 
 ```bash
 curl -r 0-175000000 -o head.tar.bz2 https://data.keithito.com/data/speech/LJSpeech-1.1.tar.bz2
@@ -118,13 +118,13 @@ ffmpeg -f concat -safe 0 -i list.txt -ac 1 -b:a 64k long.mp3
 
 ### 長錄音分 chunk
 
-這幾項需要超過上限的錄音。Gemini 轉錄的上限是 20 MB（壓縮後約 83 分鐘），OpenAI 是 25 MB（約 104 分鐘）。
+這幾項需要超過上限的錄音。Gemini 轉錄模型的上限是每個請求 1 小時，要時間（`timestamps`）時是 30 分鐘；OpenAI 是 25 MB（壓縮後約 104 分鐘）。每個 chunk 目標是上限的 9 成、最長 95%，所以 90 分鐘的錄音不要時間會分 2 個 chunk，要時間會分 4 個。Gemini 免費或 Tier 1 帳號每分鐘只能送 1 萬個輸入 token，連續送 chunk 會遇到限流（[.scratch/audio-manual-findings/issues/04-chunk-rate-limit.md](../../.scratch/audio-manual-findings/issues/04-chunk-rate-limit.md)），這幾項需要較高層級的帳號。
 
 | ID | 檢查 | 步驟／輸入 | 預期 | 需求 |
 |---|---|---|---|---|
 | #21 | 超過上限會分 chunk | 約 90 分鐘的 `long.mp3`，`model="gemini/gemini-3.5-transcribe"` | 成功；逐字稿涵蓋全長，最後一句與標準逐字稿的最後一句相符；供應商的用量顯示 2 次轉錄請求 | `GEMINI_API_KEY`、會計費 |
-| #22 | 切點落在停頓處 | 同 #21，看第一次切點附近（約第 71 到 79 分鐘）的逐字稿，對照標準逐字稿 | 沒有句子被切成兩半、沒有掉字或重複 | `GEMINI_API_KEY`、會計費 |
-| #23 | 時間跨 chunk 正確 | 同 #21，加 `timestamps=true`；在第二個 chunk（約 71 分鐘之後）抽查三行，用 `ffmpeg -ss <時間> -t 8` 切出原檔該處聽 | 內容與該行相符，偏差在 1 秒內 | `GEMINI_API_KEY`、會計費 |
+| #22 | 切點落在停頓處 | 同 #21，看第一次切點附近（約第 51 到 57 分鐘）的逐字稿，對照標準逐字稿 | 沒有句子被切成兩半、沒有掉字或重複 | `GEMINI_API_KEY`、會計費 |
+| #23 | 時間跨 chunk 正確 | 同 #21，加 `timestamps=true`（會分 4 個 chunk）；在第二個 chunk（約 26 分鐘之後）抽查三行，用 `ffmpeg -ss <時間> -t 8` 切出原檔該處聽 | 內容與該行相符，偏差在 1 秒內 | `GEMINI_API_KEY`、會計費 |
 | #24 | 被拒絕的 chunk 有標記 | 起假的本機服務（第一個請求回 `{"text":"ok"}`，第二個回 400），`[providers.openai]` 的 `api_base` 指向它；110 分鐘的靜音檔（`-t 6600 -b:a 32k`），`model="openai/whisper-1"` | 結果中出現 `[not transcribed 時間-時間: ...]`，其他 chunk 的文字還在，工具沒有失敗 | 無 |
 | #25 | 中途限流 | 同 #24，但第二個請求回 429 | 工具回傳限流的錯誤；已完成的 chunk 的文字不在結果裡（目前的行為，沒有重試）；記錄實際看到的 | 無 |
 

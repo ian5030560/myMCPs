@@ -54,8 +54,9 @@ The image tools have only been tested against a mocked LiteLLM; real API calls a
 `hh:mm:ss` and limit the work to part of the recording. Neither tool writes files; the result is text.
 
 Both tools first check the input and convert it to mono 16 kHz 32 kbps mp3, so a bad file fails
-before any paid call and most recordings fit one request (about 83 minutes for Gemini's 20 MB inline
-limit, about 104 minutes for OpenAI's 25 MB).
+before any paid call and most recordings fit one request. For transcription one request takes up to
+1 hour (30 minutes when `timestamps` is on) with Gemini's transcription model, and about 104 minutes
+(OpenAI's 25 MB) with OpenAI; chat audio goes inline up to about 83 minutes (Gemini's 20 MB).
 
 - **`transcribe_audio`** splits a recording that is still too big into chunks, cutting at the silence
   nearest each target length so words are not cut in half, and moves segment times back onto the
