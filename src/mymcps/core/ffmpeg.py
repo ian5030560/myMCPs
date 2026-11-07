@@ -28,11 +28,12 @@ class FFmpeg:
         self._workdir = workdir or Path(tempfile.gettempdir()) / "mymcps" / "work"
 
     @classmethod
-    def bundled(cls, workdir: Path | None = None) -> FFmpeg:
+    def bundled(cls, workdir: Path | None = None, extra: str = "video") -> FFmpeg:
+        """The bundled binary; ``extra`` names the install extra the error points to."""
         try:
             import imageio_ffmpeg
         except ImportError as exc:
-            raise MissingExtraError("video", "imageio-ffmpeg") from exc
+            raise MissingExtraError(extra, "imageio-ffmpeg") from exc
         return cls(imageio_ffmpeg.get_ffmpeg_exe(), workdir)
 
     # ── helpers ──────────────────────────────────────────────────────────
@@ -117,10 +118,11 @@ class FFmpeg:
         return sorted(self._workdir.glob(f"{prefix}-*.jpg"))
 
     async def extract_audio(self, path: Path, *, start=None, end=None, fmt: str = "mp3",
-                            bitrate: str = "64k") -> Path:
+                            bitrate: str = "64k", sample_rate: int | None = None) -> Path:
         dest = self._new_path("audio", fmt)
+        rate = ["-ar", str(sample_rate)] if sample_rate else []
         await self._run(*self._range(start, end), "-i", str(path), "-vn",
-                        "-ac", "1", "-b:a", bitrate, str(dest))
+                        "-ac", "1", *rate, "-b:a", bitrate, str(dest))
         return dest
 
     async def cut(self, path: Path, start, end) -> Path:
@@ -136,6 +138,45 @@ class FFmpeg:
         await self._run("-i", str(path), "-f", "segment", "-segment_time", str(segment_seconds),
                         "-c", "copy", "-reset_timestamps", "1", str(pattern))
         return sorted(self._workdir.glob(f"{prefix}-*.{ext}"))
+
+    async def split_at(self, path: Path, times: list[float]) -> list[Path]:
+        """Cut ``path`` at the given times (seconds, increasing) without re-encoding.
+
+        Returns ``len(times) + 1`` files that follow each other with no gap and no overlap.
+        """
+        ext = path.suffix.lstrip(".") or "mp3"
+        self._workdir.mkdir(parents=True, exist_ok=True)
+        prefix = f"part-{secrets.token_hex(3)}"
+        pattern = self._workdir / f"{prefix}-%03d.{ext}"
+        await self._run("-i", str(path), "-f", "segment",
+                        "-segment_times", ",".join(f"{t:.3f}" for t in times),
+                        "-c", "copy", "-reset_timestamps", "1", str(pattern))
+        return sorted(self._workdir.glob(f"{prefix}-*.{ext}"))
+
+    async def detect_silences(self, path: Path, *, noise_db: float = -35.0,
+                              min_duration: float = 0.3) -> list[tuple[float, float]]:
+        """``(start, end)`` of each silence in seconds, found with ffmpeg's silencedetect.
+
+        A silence that runs to the end of the file has an end of infinity.
+        """
+        result = await anyio.run_process(
+            [self._exe, "-hide_banner", "-nostats", "-i", str(path), "-af",
+             f"silencedetect=noise={noise_db}dB:d={min_duration}", "-f", "null", "-"],
+            check=False)
+        text = result.stderr.decode(errors="replace")
+        if result.returncode != 0:
+            raise FFmpegError(f"ffmpeg failed ({result.returncode}): {text.strip()[-800:]}")
+        silences: list[tuple[float, float]] = []
+        start: float | None = None
+        for kind, value in re.findall(r"silence_(start|end): (-?\d+(?:\.\d+)?)", text):
+            if kind == "start":
+                start = float(value)
+            elif start is not None:
+                silences.append((start, float(value)))
+                start = None
+        if start is not None:
+            silences.append((start, float("inf")))
+        return silences
 
     async def compress(self, path: Path, *, max_height: int = 480,
                        fps: float | None = None) -> Path:

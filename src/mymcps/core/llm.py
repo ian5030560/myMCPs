@@ -121,6 +121,12 @@ class LLMClient:
                 file=file, purpose=purpose, custom_llm_provider=model.vendor,
                 **model.call_kwargs(), **kw)
 
+    async def delete_file(self, model: ResolvedModel, file_id: str, **kw: Any) -> Any:
+        """Remove a file uploaded with :meth:`upload_file` from the vendor."""
+        with self._guard(model):
+            return await self._module.afile_delete(
+                file_id=file_id, custom_llm_provider=model.vendor, **model.call_kwargs(), **kw)
+
     # ── error translation ────────────────────────────────────────────────
     @contextlib.contextmanager
     def _guard(self, model: ResolvedModel) -> Iterator[None]:

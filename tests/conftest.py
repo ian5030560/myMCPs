@@ -27,8 +27,13 @@ class FakeLiteLLM:
             "whisper-1": {"mode": "audio_transcription"},
         }
         self.calls: list[tuple[str, dict]] = []
+        self.transcriptions: list[bytes] = []   # the audio of each atranscription call
         self.raises: Exception | None = None
         self.response = None   # returned by every call when set
+        # One entry per call, used before `response`: a result to return, or an exception to
+        # raise. Lets a test give each call of a multi-call tool its own outcome.
+        self.queue: list = []
+        self.uploads: list[bytes] = []          # the content of each acreate_file call
 
     def get_llm_provider(self, model):
         provider = model.split("/", 1)[0] if "/" in model else "openai"
@@ -37,6 +42,11 @@ class FakeLiteLLM:
 
     async def _record(self, name, **kw):
         self.calls.append((name, kw))
+        if self.queue:
+            item = self.queue.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item
         if self.raises:
             raise self.raises
         return self.response if self.response is not None else {"ok": name}
@@ -51,10 +61,20 @@ class FakeLiteLLM:
         return await self._record("aimage_edit", **kw)
 
     async def atranscription(self, **kw):
+        # The caller removes its file once the call returns, so keep what was sent.
+        file = kw.get("file")
+        if hasattr(file, "read"):
+            self.transcriptions.append(file.read())
         return await self._record("atranscription", **kw)
 
     async def acreate_file(self, **kw):
+        file = kw.get("file")
+        if hasattr(file, "read"):
+            self.uploads.append(file.read())
         return await self._record("acreate_file", **kw)
+
+    async def afile_delete(self, **kw):
+        return await self._record("afile_delete", **kw)
 
 
 @pytest.fixture
@@ -99,7 +119,19 @@ def image_response(*images: bytes | str):
     return SimpleNamespace(data=data)
 
 
+def transcription_response(text: str = "", segments: list[dict] | None = None,
+                           words: list[dict] | None = None):
+    """A LiteLLM-like TranscriptionResponse."""
+    return SimpleNamespace(text=text, segments=segments, words=words)
+
+
+def completion_response(text: str | None):
+    """A LiteLLM-like ModelResponse with one choice."""
+    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text))])
+
+
 IMAGE_MODELS = {"gen_model": "openai/gpt-image-2", "edit_model": "openai/gpt-image-2"}
+AUDIO_MODELS = {"listen_model": "gemini/gemini-2.5-flash", "transcribe_model": "openai/whisper-1"}
 
 
 @pytest.fixture
@@ -108,20 +140,23 @@ def make_ctx(tmp_path, fake_litellm):
 
     ``make_ctx(server=..., sections=..., environ=..., **settings_overrides)``. By default it
     builds the image server with a model configured for each of its purposes; pass
-    ``sections={}`` to leave every purpose unconfigured.
+    ``sections={}`` to leave every purpose unconfigured. ``ffmpeg=`` supplies the ffmpeg the
+    context uses (audio and video tests).
     """
     def build(server=None, sections=None, environ=None, **overrides):
         from mymcps.image.server import ImageServer
 
         server = server or ImageServer.spec
         if sections is None:
-            sections = {"image": dict(IMAGE_MODELS)} if server.name == "image" else {}
+            defaults = {"image": IMAGE_MODELS, "audio": AUDIO_MODELS}
+            sections = {server.name: dict(defaults[server.name])} if server.name in defaults else {}
+        ffmpeg = overrides.pop("ffmpeg", None)
         settings = Settings(output_dir=str(tmp_path / "out"), sections=sections, **overrides)
         llm = LLMClient(module=fake_litellm)
         inputs = InputResolver(settings)
         models = ModelRegistry(settings, llm, server, environ=environ or {})
         return AppContext(server, settings, llm, models, inputs,
-                          OutputManager(settings, server.name))
+                          OutputManager(settings, server.name), ffmpeg=ffmpeg)
     return build
 
 

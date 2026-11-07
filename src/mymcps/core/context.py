@@ -45,4 +45,4 @@ class AppContext:
     @cached_property
     def ffmpeg(self) -> FFmpeg:
         """Created on first use so the image server does not need imageio-ffmpeg."""
-        return FFmpeg.bundled()
+        return FFmpeg.bundled(extra=self.server.name)

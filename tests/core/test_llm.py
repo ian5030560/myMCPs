@@ -33,9 +33,11 @@ async def test_other_calls(llm, fake_litellm):
     await llm.edit_image(m, b"img", "edit")
     await llm.transcribe(m, b"aud")
     await llm.upload_file(m, b"file")
+    await llm.delete_file(m, "files/abc")
     assert [c[0] for c in fake_litellm.calls] == [
-        "acompletion", "aimage_edit", "atranscription", "acreate_file"]
+        "acompletion", "aimage_edit", "atranscription", "acreate_file", "afile_delete"]
     assert fake_litellm.calls[3][1]["custom_llm_provider"] == "gemini"
+    assert fake_litellm.calls[4][1] == {"file_id": "files/abc", "custom_llm_provider": "gemini"}
 
 
 class AuthenticationError(Exception):
