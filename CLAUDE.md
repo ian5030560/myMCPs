@@ -59,7 +59,17 @@ Format: `TYPE: SUBJECT`, then an optional body and an optional footer, each sepa
 - **Types** (capitalised): `Feat` new feature, `Modify` change to the requirements of an existing feature, `Fix` bug fix, `Docs` documentation only, `Style` formatting only, `Refactor` restructuring without changing logic, `Test` adding or refactoring tests, `Chore` build configuration, versions and other routine work, `Revert` undoing a commit (`revert: type(scope): subject (回覆版本：xxxx)`).
 - **Subject**: at most 50 characters, imperative and brief, no full stop at the end; capitalise the first letter when it is English.
 - **Body** (optional): say what changed and why, at most 72 characters per line.
-- **Footer** (optional): issue references such as `Resolves: #123`.
+- **Footer** (optional): issue references such as `Resolves: #123`. Issues here are local files, so reference the path (`Resolves: .scratch/<feature>/issues/01-....md`).
+
+### Suggesting commits
+
+Whenever you finish an implementation (a spec, tickets, code, tests, docs), end your report with a suggested batch of commits, ready to run. The user commits; you do not commit unless asked.
+
+- **Batching**: split along what can stand alone, in dependency order. Typically: design docs (glossary, ADR, spec) first; shared or core support next; then independent pure modules; then the feature that uses them. Split by file, not by hunk: do not use `git add -p` to rebuild intermediate versions that were never tested. If several tickets share files, one commit for them is better than untested halves.
+- **Ticket files** (status and ticked boxes) go in the commit that implements them, never earlier; tickets still open go with the design docs.
+- **Each commit must pass `pytest` and `ruff check .` on its own.** Mention `git rebase --exec ".venv/Scripts/python -m pytest -q -x" <base>` as an optional way to check every commit once all are made.
+- **Format of the suggestion**: a table of the batches (contents and why they are separate), then one `bash` block per commit with `git add <files> && git commit -F <message file>`. Write each message to a file in the scratchpad directory and give its full path; this avoids quoting and line-break mistakes in `-m`. Messages follow the format above and end with the attribution line from the system reminder.
+- Run `git status` first so the suggestion reflects what is actually uncommitted, and check that every changed file belongs to exactly one batch.
 
 ## Agent skills
 
