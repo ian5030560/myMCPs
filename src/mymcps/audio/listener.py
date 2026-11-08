@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import logging
+from collections.abc import AsyncIterator
 
 from mymcps.core.abilities import AUDIO_INPUT, CHAT
 from mymcps.core.context import AppContext
@@ -13,9 +15,10 @@ from mymcps.core.errors import (
     ProviderError,
     UnsupportedCapabilityError,
 )
+from mymcps.core.responses import field
 
-from .limits import limits_for
-from .prepare import PreparedAudio, prepare
+from .limits import VendorLimits, limits_for
+from .prepare import PreparedAudio, RecordingTooLong, prepare
 from .timestamps import shift_cited_times
 
 log = logging.getLogger(__name__)
@@ -23,6 +26,12 @@ log = logging.getLogger(__name__)
 _CITE = ("\n\nWhere it helps, cite moments in the audio as [hh:mm:ss], counted from the start "
          "of this audio.")
 _MIME = "audio/mpeg"
+_TOO_LONG = (
+    "The recording is {hours:.1f} hours, over the {limit:.1f} hours {vendor} takes in one "
+    "request. `listen_audio` never splits a recording, because only you know whether your "
+    "question survives being split. Either (1) work through the recording in order with "
+    "`start` and `end`, carrying your notes so far into the next `prompt`, or (2) call "
+    "`transcribe_audio` first and work from the text.")
 
 
 class Listener:
@@ -38,31 +47,16 @@ class Listener:
                 "that hears audio (for example gemini/gemini-2.5-flash).")
         limits = limits_for(resolved.vendor)
 
-        def too_long(seconds: float) -> Exception:
-            return InputError(_TOO_LONG.format(
-                hours=seconds / 3600, limit=limits.max_seconds / 3600, vendor=resolved.vendor))
-
-        async with prepare(self._ctx, source, start, end, max_seconds=limits.max_seconds,
-                           too_long=too_long) as audio:
-            question = prompt + (_CITE if timestamps else "")
-            uploaded: str | None = None
-            try:
-                if limits.inline_bytes is not None and audio.size > limits.inline_bytes:
-                    if not limits.files_api:
-                        raise InputError(
-                            f"The compressed audio is {audio.size / 1e6:.1f} MB, over the "
-                            f"{limits.inline_bytes / 1e6:.0f} MB {resolved.vendor} takes in one "
-                            "request. Use a shorter range with `start` and `end`.")
-                    uploaded = await self._upload(resolved, audio)
-                    part = {"type": "file", "file": {"file_id": uploaded, "format": _MIME}}
-                else:
-                    data = base64.b64encode(audio.path.read_bytes()).decode()
-                    part = {"type": "input_audio", "input_audio": {"data": data, "format": "mp3"}}
-                response = await self._ctx.llm.complete(resolved, [{"role": "user", "content": [
-                    {"type": "text", "text": question}, part]}])
-            finally:
-                if uploaded is not None:
-                    await self._delete(resolved, uploaded)
+        try:
+            async with prepare(self._ctx, source, start, end,
+                               max_seconds=limits.max_seconds) as audio:
+                question = prompt + (_CITE if timestamps else "")
+                async with self._audio_part(resolved, audio, limits) as part:
+                    response = await self._ctx.llm.complete(resolved, [{"role": "user", "content": [
+                        {"type": "text", "text": question}, part]}])
+        except RecordingTooLong as exc:
+            raise InputError(_TOO_LONG.format(
+                hours=exc.seconds / 3600, limit=exc.limit / 3600, vendor=resolved.vendor)) from exc
         answer = _answer(response, resolved.model)
         if not timestamps:
             return answer
@@ -73,11 +67,32 @@ class Listener:
                 "`timestamps`, or ask for the moments in the `prompt`.")
         return answer
 
+    @contextlib.asynccontextmanager
+    async def _audio_part(self, resolved, audio: PreparedAudio,
+                          limits: VendorLimits) -> AsyncIterator[dict]:
+        """The message part that carries the audio: inline when small, else uploaded.
+
+        An upload is always deleted on exit, also after an error.
+        """
+        if limits.inline_bytes is None or audio.size <= limits.inline_bytes:
+            data = base64.b64encode(audio.path.read_bytes()).decode()
+            yield {"type": "input_audio", "input_audio": {"data": data, "format": "mp3"}}
+            return
+        if not limits.files_api:
+            raise InputError(
+                f"The compressed audio is {audio.size / 1e6:.1f} MB, over the "
+                f"{limits.inline_bytes / 1e6:.0f} MB {resolved.vendor} takes in one "
+                "request. Use a shorter range with `start` and `end`.")
+        file_id = await self._upload(resolved, audio)
+        try:
+            yield {"type": "file", "file": {"file_id": file_id, "format": _MIME}}
+        finally:
+            await self._delete(resolved, file_id)
+
     async def _upload(self, resolved, audio: PreparedAudio) -> str:
         with audio.path.open("rb") as handle:
             uploaded = await self._ctx.llm.upload_file(resolved, handle)
-        file_id = (uploaded.get("id") if isinstance(uploaded, dict)
-                   else getattr(uploaded, "id", None))
+        file_id = field(uploaded, "id")
         if not file_id:
             raise ProviderError(f"{resolved.model}: the upload returned no file id.")
         return file_id
@@ -90,20 +105,10 @@ class Listener:
             log.warning("could not delete the uploaded audio %s: %s", file_id, exc)
 
 
-_TOO_LONG = (
-    "The recording is {hours:.1f} hours, over the {limit:.1f} hours {vendor} takes in one "
-    "request. `listen_audio` never splits a recording, because only you know whether your "
-    "question survives being split. Either (1) work through the recording in order with "
-    "`start` and `end`, carrying your notes so far into the next `prompt`, or (2) call "
-    "`transcribe_audio` first and work from the text.")
-
-
 def _answer(response, model: str) -> str:
     try:
-        choice = response["choices"][0] if isinstance(response, dict) else response.choices[0]
-        message = choice["message"] if isinstance(choice, dict) else choice.message
-        content = message["content"] if isinstance(message, dict) else message.content
-    except (AttributeError, IndexError, KeyError, TypeError) as exc:
+        content = field(field(field(response, "choices")[0], "message"), "content")
+    except (IndexError, TypeError) as exc:
         raise ProviderError(f"{model} returned no answer.") from exc
     text = (content or "").strip()
     if not text:

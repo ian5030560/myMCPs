@@ -21,11 +21,12 @@ from mymcps.core.errors import (
     RateLimitError,
     UnsupportedCapabilityError,
 )
+from mymcps.core.responses import field
 
 from .limits import limits_for
 from .planner import plan_chunks
 from .prepare import BYTES_PER_SECOND, PreparedAudio, prepare
-from .timestamps import Word, format_time, group_words, mark_segments
+from .timestamps import Segment, Word, format_time, group_words, mark_segments
 
 # A chunk is planned to fill this much of what one request carries, leaving room for headers.
 SIZE_MARGIN = 0.95
@@ -41,11 +42,12 @@ log = logging.getLogger(__name__)
 
 
 async def _pause(seconds: float) -> None:
+    # A named function so tests can replace the wait without patching asyncio itself.
     await asyncio.sleep(seconds)
 
 
 @dataclass
-class _Piece:
+class _Chunk:
     path: Path
     start: float    # seconds into the prepared audio
     end: float
@@ -72,29 +74,29 @@ class Transcriber:
             seconds = limits.transcribe_seconds
             if timestamps and limits.timed_transcribe_seconds is not None:
                 seconds = limits.timed_transcribe_seconds
-            pieces = await self._pieces(audio, limits.transcribe_bytes, seconds)
+            chunks = await self._chunks(audio, limits.transcribe_bytes, seconds)
             try:
-                parts = await self._run(resolved, pieces, audio, kw, timestamps)
+                parts = await self._run(resolved, chunks, audio, kw, timestamps)
             finally:
-                for piece in pieces:
-                    if piece.path != audio.path:
+                for chunk in chunks:
+                    if chunk.path != audio.path:
                         with contextlib.suppress(OSError):
-                            piece.path.unlink()
+                            chunk.path.unlink()
         if timestamps:
             return mark_segments(parts, audio.offset)
         return "\n".join(text for _, text in parts)
 
-    async def _pieces(self, audio: PreparedAudio, max_bytes: int | None,
-                      max_seconds: float | None) -> list[_Piece]:
+    async def _chunks(self, audio: PreparedAudio, max_bytes: int | None,
+                      max_seconds: float | None) -> list[_Chunk]:
         """The whole audio when it fits one request, else chunks cut at silence.
 
         A request is limited by file size, by duration, or both; a chunk must respect the
         tighter one. A limit that is not known cuts nothing.
         """
-        whole = [_Piece(audio.path, 0.0, audio.duration)]
-        too_big = max_bytes is not None and audio.size > max_bytes
-        too_long = max_seconds is not None and audio.duration > max_seconds * SIZE_MARGIN
-        if not (too_big or too_long):
+        whole = [_Chunk(audio.path, 0.0, audio.duration)]
+        over_size = max_bytes is not None and audio.size > max_bytes
+        over_duration = max_seconds is not None and audio.duration > max_seconds * SIZE_MARGIN
+        if not (over_size or over_duration):
             return whole
         ffmpeg = self._ctx.ffmpeg
         allowed = []
@@ -113,15 +115,15 @@ class Transcriber:
                 with contextlib.suppress(OSError):
                     file.unlink()
             raise FFmpegError(
-                f"Cutting the recording gave {len(files)} pieces, expected {len(chunks)}.")
-        return [_Piece(file, start, end)
+                f"Cutting the recording gave {len(files)} chunks, expected {len(chunks)}.")
+        return [_Chunk(file, start, end)
                 for file, (start, end) in zip(files, chunks, strict=True)]
 
-    async def _send(self, resolved, piece: _Piece, kw: dict):
-        """One request; a rate limit is waited out and the same piece sent again."""
+    async def _send(self, resolved, chunk: _Chunk, kw: dict):
+        """One request; a rate limit is waited out and the same chunk sent again."""
         for attempt in range(RATE_LIMIT_RETRIES + 1):
             try:
-                with piece.path.open("rb") as handle:
+                with chunk.path.open("rb") as handle:
                     return await self._ctx.llm.transcribe(resolved, handle, **kw)
             except RateLimitError as exc:
                 if attempt == RATE_LIMIT_RETRIES:
@@ -131,52 +133,56 @@ class Transcriber:
                             wait, attempt + 1, RATE_LIMIT_RETRIES)
                 await _pause(wait)
 
-    async def _run(self, resolved, pieces: list[_Piece], audio: PreparedAudio, kw: dict,
-                   timestamps: bool) -> list[tuple[float, str]]:
-        """``(start in the prepared audio, text)`` for every piece, in order."""
-        parts: list[tuple[float, str]] = []
-        answered = 0
-
-        def hole(piece: _Piece, reason) -> tuple[float, str]:
-            # Never drop a chunk silently: the hole is marked where it is in the transcript.
-            first, last = (format_time(audio.offset + t) for t in (piece.start, piece.end))
-            return piece.start, f"[not transcribed {first}-{last}: {reason}]"
-
+    async def _run(self, resolved, chunks: list[_Chunk], audio: PreparedAudio, kw: dict,
+                   timestamps: bool) -> list[Segment]:
+        """The transcript of every chunk, in order; a segment starts in the prepared audio."""
+        parts: list[Segment] = []
         failures: list[ModelError] = []
-        for index, piece in enumerate(pieces):
+        answered = 0
+        for index, chunk in enumerate(chunks):
             try:
-                response = await self._send(resolved, piece, kw)
+                response = await self._send(resolved, chunk, kw)
             except ProviderError as exc:
-                if len(pieces) == 1:
+                if len(chunks) == 1:
                     raise
                 failures.append(exc)
-                parts.append(hole(piece, exc))
+                parts.append(_hole(chunk, audio.offset, exc))
                 continue
             except RateLimitError as exc:
                 # The provider keeps refusing: what is done is kept, the rest is marked, and
                 # nothing more is sent.
-                if len(pieces) == 1 or not answered:
+                if len(chunks) == 1 or not answered:
                     raise
                 failures.append(exc)
-                parts.append(hole(piece, exc))
-                parts.extend(hole(rest, "not sent after the rate limit above")
-                             for rest in pieces[index + 1:])
+                parts.append(_hole(chunk, audio.offset, exc))
+                parts.extend(_hole(rest, audio.offset, "not sent after the rate limit above")
+                             for rest in chunks[index + 1:])
                 break
             answered += 1
-            if not timestamps:
-                if text := _text(response):
-                    parts.append((piece.start, text))
-                continue
-            lines = _segments(response) or group_words(_words(response))
-            if not lines and _text(response):
-                raise UnsupportedCapabilityError(
-                    f"{resolved.model} returns no timestamps. Call again without `timestamps`, "
-                    "or set `transcribe_model` to a model that returns them (for example "
-                    "openai/whisper-1).")
-            parts.extend((piece.start + start, text) for start, text in lines)
-        if not answered and len(pieces) > 1:
+            parts.extend(_segments_of(response, chunk.start, timestamps, resolved.model))
+        if not answered and len(chunks) > 1:
             raise failures[0]           # nothing was transcribed at all
         return parts
+
+
+def _hole(chunk: _Chunk, offset: float, reason) -> Segment:
+    """Never drop a chunk silently: the hole is marked where it is in the transcript."""
+    first, last = (format_time(offset + t) for t in (chunk.start, chunk.end))
+    return Segment(chunk.start, f"[not transcribed {first}-{last}: {reason}]")
+
+
+def _segments_of(response, chunk_start: float, timestamps: bool, model: str) -> list[Segment]:
+    """What one answer says, with its times moved to where the chunk starts."""
+    if not timestamps:
+        text = _text(response)
+        return [Segment(chunk_start, text)] if text else []
+    lines = _segments(response) or group_words(_words(response))
+    if not lines and _text(response):
+        raise UnsupportedCapabilityError(
+            f"{model} returns no timestamps. Call again without `timestamps`, "
+            "or set `transcribe_model` to a model that returns them (for example "
+            "openai/whisper-1).")
+    return [Segment(chunk_start + line.start, line.text) for line in lines]
 
 
 def _timing_params(vendor: str) -> dict:
@@ -190,28 +196,24 @@ def _timing_params(vendor: str) -> dict:
     return {"response_format": "verbose_json"}
 
 
-def _field(obj, name):
-    return obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
-
-
 def _text(response) -> str:
-    return (_field(response, "text") or "").strip()
+    return (field(response, "text") or "").strip()
 
 
-def _segments(response) -> list[tuple[float, str]]:
+def _segments(response) -> list[Segment]:
     found = []
-    for segment in _field(response, "segments") or []:
-        start, text = _field(segment, "start"), (_field(segment, "text") or "").strip()
+    for segment in field(response, "segments") or []:
+        start, text = field(segment, "start"), (field(segment, "text") or "").strip()
         if start is not None and text:
-            found.append((float(start), text))
+            found.append(Segment(float(start), text))
     return found
 
 
 def _words(response) -> list[Word]:
     found = []
-    for word in _field(response, "words") or []:
-        start, end = _field(word, "start"), _field(word, "end")
-        text = _field(word, "word") or _field(word, "text") or ""
+    for word in field(response, "words") or []:
+        start, end = field(word, "start"), field(word, "end")
+        text = field(word, "word") or field(word, "text") or ""
         if start is not None and text.strip():
             found.append(Word(float(start), None if end is None else float(end), text))
     return found

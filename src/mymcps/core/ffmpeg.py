@@ -131,25 +131,23 @@ class FFmpeg:
         return dest
 
     async def split(self, path: Path, segment_seconds: float) -> list[Path]:
-        ext = path.suffix.lstrip(".") or "mp3"
-        self._workdir.mkdir(parents=True, exist_ok=True)
-        prefix = f"seg-{secrets.token_hex(3)}"
-        pattern = self._workdir / f"{prefix}-%03d.{ext}"
-        await self._run("-i", str(path), "-f", "segment", "-segment_time", str(segment_seconds),
-                        "-c", "copy", "-reset_timestamps", "1", str(pattern))
-        return sorted(self._workdir.glob(f"{prefix}-*.{ext}"))
+        return await self._segment(path, "seg", "-segment_time", str(segment_seconds))
 
     async def split_at(self, path: Path, times: list[float]) -> list[Path]:
         """Cut ``path`` at the given times (seconds, increasing) without re-encoding.
 
         Returns ``len(times) + 1`` files that follow each other with no gap and no overlap.
         """
+        return await self._segment(path, "part", "-segment_times",
+                                   ",".join(f"{t:.3f}" for t in times))
+
+    async def _segment(self, path: Path, prefix: str, *cut: str) -> list[Path]:
+        """Copy ``path`` into numbered files, cut where the ``-segment_*`` option says."""
         ext = path.suffix.lstrip(".") or "mp3"
         self._workdir.mkdir(parents=True, exist_ok=True)
-        prefix = f"part-{secrets.token_hex(3)}"
+        prefix = f"{prefix}-{secrets.token_hex(3)}"
         pattern = self._workdir / f"{prefix}-%03d.{ext}"
-        await self._run("-i", str(path), "-f", "segment",
-                        "-segment_times", ",".join(f"{t:.3f}" for t in times),
+        await self._run("-i", str(path), "-f", "segment", *cut,
                         "-c", "copy", "-reset_timestamps", "1", str(pattern))
         return sorted(self._workdir.glob(f"{prefix}-*.{ext}"))
 

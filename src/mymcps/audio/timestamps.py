@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import NamedTuple
 
 # [mm:ss] or [hh:mm:ss], as a model writes it when asked to cite moments.
 _CITED = re.compile(r"\[(\d{1,3}):(\d{2})(?::(\d{2}))?\]")
@@ -16,6 +17,13 @@ _CITED = re.compile(r"\[(\d{1,3}):(\d{2})(?::(\d{2}))?\]")
 def format_time(seconds: float) -> str:
     total = int(max(seconds, 0) + 0.5)          # rounded, half up (not Python's round-to-even)
     return f"{total // 3600:02d}:{total % 3600 // 60:02d}:{total % 60:02d}"
+
+
+class Segment(NamedTuple):
+    """A short timed piece of transcript, as a model returns it or as words are grouped."""
+
+    start: float        # seconds
+    text: str
 
 
 @dataclass(frozen=True)
@@ -33,8 +41,8 @@ MAX_LINE_SECONDS = 10.0    # a line never starts more than this long after its f
 
 
 def group_words(words: Iterable[Word], pause: float = PAUSE_SECONDS,
-                max_seconds: float = MAX_LINE_SECONDS) -> list[tuple[float, str]]:
-    """Group timed words into ``(start, text)`` lines, in the order given.
+                max_seconds: float = MAX_LINE_SECONDS) -> list[Segment]:
+    """Group timed words into ``Segment`` lines, in the order given.
 
     A line ends at a pause longer than ``pause`` (measured from one word's end to the next
     word's start; skipped when the end is unknown) or when the next word would start
@@ -53,7 +61,7 @@ def group_words(words: Iterable[Word], pause: float = PAUSE_SECONDS,
         else:
             lines[-1][1].append(word.text.strip())
         previous = word
-    return [(start, _join(parts)) for start, parts in lines]
+    return [Segment(start, _join(parts)) for start, parts in lines]
 
 
 def _join(parts: list[str]) -> str:
@@ -71,7 +79,7 @@ def _is_cjk(char: str) -> bool:
 _CJK = ((0x2E80, 0x9FFF), (0xAC00, 0xD7AF), (0xF900, 0xFAFF), (0xFF00, 0xFFEF))
 
 
-def mark_segments(segments: Iterable[tuple[float, str]], offset: float) -> str:
+def mark_segments(segments: Iterable[Segment], offset: float) -> str:
     """One line per segment, each led by its start time."""
     return "\n".join(f"[{format_time(offset + start)}] {text}" for start, text in segments)
 
