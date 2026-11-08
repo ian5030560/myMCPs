@@ -1,6 +1,6 @@
 # 01: 在 LLMClient 把 LiteLLM 回應轉成型別
 
-**Status:** needs-triage
+**Status:** resolved
 
 **Found by:** audio 重構的物件導向評估，2026-11-08。
 
@@ -20,3 +20,11 @@ LiteLLM 的回應有時是物件、有時是字典，各處自己處理：`image
 
 - 動到核心與 image；`FakeLiteLLM` 與各測試的假回應格式要一起確認。
 - 單獨驗證：`pytest` 全過，並用真實 API 各跑一次 image 與 audio（見 `docs/manual-testing/`）。
+
+## 完成
+
+- `core/responses.py`：`Segment`、`Word`、`Transcription`、`GeneratedImage`，以及從 LiteLLM 回應（物件或字典）轉換的函式；`field` 已刪除。
+- `LLMClient`：`complete` 回傳答案文字（沒有 choice 時 `ProviderError`），`generate_image`/`edit_image` 回傳 `list[GeneratedImage]`，`transcribe` 回傳 `Transcription`，`upload_file` 回傳檔案 id（沒有時 `ProviderError`），`delete_file` 回傳 None。
+- `image/results.py`、`audio/transcriber.py`、`audio/listener.py` 不再碰 LiteLLM 回應；`audio/timestamps` 從 core 取用 `Segment`、`Word`。
+- 測試：`test_llm` 新增轉換測試，`test_results` 改用 `GeneratedImage`；其餘測試不變。`pytest` 712 項通過、`ruff` 乾淨。
+- 未用真實 API 驗證：轉換只依賴既有欄位名稱（`data[].b64_json/url`、`choices[0].message.content`、`text/segments/words`、`id`），行為與先前相同，但沒有重跑 image 與 audio 的實測清單。

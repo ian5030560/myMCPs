@@ -3,9 +3,11 @@ import sys
 
 import pytest
 
+from conftest import completion_response, image_response, transcription_response
 from mymcps.core.config import ModelSpec, ProviderSpec, Settings
 from mymcps.core.errors import AuthError, ProviderError, RateLimitError
 from mymcps.core.models import ModelRegistry
+from mymcps.core.responses import GeneratedImage, Segment, Transcription, Word
 from mymcps.core.spec import Purpose, ServerSpec
 
 DEMO = ServerSpec("demo", purposes=(Purpose("main", "a demo job"),))
@@ -22,13 +24,14 @@ async def test_call_kwargs_are_forwarded(llm, fake_litellm):
     m = resolved(llm, provider=ProviderSpec(api_base="http://x"), extra={"timeout": 3})
     out = await llm.generate_image(m, "a cat", n=2)
     name, kw = fake_litellm.calls[0]
-    assert out == {"ok": "aimage_generation"} and name == "aimage_generation"
+    assert out == [] and name == "aimage_generation"
     assert kw == {"model": "openai/gpt-image-1", "prompt": "a cat", "api_base": "http://x",
                   "timeout": 3, "n": 2}
 
 
 async def test_other_calls(llm, fake_litellm):
     m = resolved(llm, "gemini/gemini-2.5-flash")
+    fake_litellm.queue = [completion_response("hello"), {}, {}, {"id": "files/abc"}]
     await llm.complete(m, [{"role": "user", "content": "hi"}])
     await llm.edit_image(m, b"img", "edit")
     await llm.transcribe(m, b"aud")
@@ -145,3 +148,53 @@ async def test_other_errors_lose_an_embedded_traceback_too(llm, fake_litellm):
         await llm.complete(resolved(llm), [])
     assert str(err.value).endswith("connection refused")
     assert not isinstance(err.value, AuthError)
+
+
+# ── responses come back as plain values, whether LiteLLM gave objects or dicts ────────────
+
+async def test_complete_returns_the_stripped_text(llm, fake_litellm):
+    m = resolved(llm, "gemini/gemini-2.5-flash")
+    fake_litellm.response = completion_response("  hi  ")
+    assert await llm.complete(m, []) == "hi"
+    fake_litellm.response = {"choices": [{"message": {"content": "from a dict"}}]}
+    assert await llm.complete(m, []) == "from a dict"
+    fake_litellm.response = completion_response(None)
+    assert await llm.complete(m, []) == ""
+
+
+async def test_complete_without_a_choice_is_a_provider_error(llm, fake_litellm):
+    m = resolved(llm, "gemini/gemini-2.5-flash")
+    for bad in ({"choices": []}, {}, None):
+        fake_litellm.response = bad or {"ok": 1}
+        with pytest.raises(ProviderError, match="returned no answer"):
+            await llm.complete(m, [])
+
+
+async def test_images_come_back_as_values(llm, fake_litellm):
+    m = resolved(llm)
+    fake_litellm.response = image_response(b"x", "https://img.test/a.png")
+    assert await llm.generate_image(m, "p") == [
+        GeneratedImage(b64="eA==", url=None), GeneratedImage(b64=None, url="https://img.test/a.png")]
+    fake_litellm.response = {"data": [{"b64_json": "eA=="}]}
+    assert await llm.edit_image(m, b"i", "p") == [GeneratedImage(b64="eA==")]
+
+
+async def test_a_transcription_comes_back_as_a_value(llm, fake_litellm):
+    m = resolved(llm, "gemini/gemini-2.5-flash")
+    fake_litellm.response = transcription_response(
+        " hello ", segments=[{"start": 1, "text": " a "}, {"start": None, "text": "x"}],
+        words=[{"start": 0.5, "end": 1.0, "word": "hi"}, {"start": 2, "text": "yo"},
+               {"start": 3, "word": " "}])
+    assert await llm.transcribe(m, b"a") == Transcription(
+        "hello", [Segment(1.0, "a")], [Word(0.5, 1.0, "hi"), Word(2.0, None, "yo")])
+    fake_litellm.response = {"text": "plain"}
+    assert await llm.transcribe(m, b"a") == Transcription("plain", [], [])
+
+
+async def test_upload_returns_the_file_id_or_fails(llm, fake_litellm):
+    m = resolved(llm, "gemini/gemini-2.5-flash")
+    fake_litellm.response = {"id": "files/abc"}
+    assert await llm.upload_file(m, b"f") == "files/abc"
+    fake_litellm.response = {"name": "no id"}
+    with pytest.raises(ProviderError, match="no file id"):
+        await llm.upload_file(m, b"f")

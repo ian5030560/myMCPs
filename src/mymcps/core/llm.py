@@ -24,6 +24,14 @@ from .errors import (
     ProviderError,
     RateLimitError,
 )
+from .responses import (
+    GeneratedImage,
+    Transcription,
+    completion_text,
+    file_id_from,
+    images_from,
+    transcription_from,
+)
 from .vendors import STANDARD_KEY_VARS
 
 if TYPE_CHECKING:
@@ -94,37 +102,52 @@ class LLMClient:
                           audio_input=bool(entry.get("supports_audio_input")))
 
     # ── calls ────────────────────────────────────────────────────────────
-    async def complete(self, model: ResolvedModel, messages: list[dict], **kw: Any) -> Any:
+    async def complete(self, model: ResolvedModel, messages: list[dict], **kw: Any) -> str:
+        """The answer text (stripped; empty when the model said nothing)."""
         with self._guard(model):
-            return await self._module.acompletion(
+            response = await self._module.acompletion(
                 model=model.model, messages=messages, **model.call_kwargs(), **kw)
+        text = completion_text(response)
+        if text is None:
+            raise ProviderError(f"{model.model} returned no answer.")
+        return text
 
-    async def generate_image(self, model: ResolvedModel, prompt: str, **kw: Any) -> Any:
+    async def generate_image(self, model: ResolvedModel, prompt: str,
+                             **kw: Any) -> list[GeneratedImage]:
         with self._guard(model):
-            return await self._module.aimage_generation(
+            response = await self._module.aimage_generation(
                 model=model.model, prompt=prompt, **model.call_kwargs(), **kw)
+        return images_from(response)
 
-    async def edit_image(self, model: ResolvedModel, image: Any, prompt: str, **kw: Any) -> Any:
+    async def edit_image(self, model: ResolvedModel, image: Any, prompt: str,
+                         **kw: Any) -> list[GeneratedImage]:
         with self._guard(model):
-            return await self._module.aimage_edit(
+            response = await self._module.aimage_edit(
                 model=model.model, image=image, prompt=prompt, **model.call_kwargs(), **kw)
+        return images_from(response)
 
-    async def transcribe(self, model: ResolvedModel, file: Any, **kw: Any) -> Any:
+    async def transcribe(self, model: ResolvedModel, file: Any, **kw: Any) -> Transcription:
         with self._guard(model):
-            return await self._module.atranscription(
+            response = await self._module.atranscription(
                 model=model.model, file=file, **model.call_kwargs(), **kw)
+        return transcription_from(response)
 
     async def upload_file(self, model: ResolvedModel, file: Any, purpose: str = "user_data",
-                          **kw: Any) -> Any:
+                          **kw: Any) -> str:
+        """Upload ``file`` to the vendor and return its id."""
         with self._guard(model):
-            return await self._module.acreate_file(
+            response = await self._module.acreate_file(
                 file=file, purpose=purpose, custom_llm_provider=model.vendor,
                 **model.call_kwargs(), **kw)
+        file_id = file_id_from(response)
+        if not file_id:
+            raise ProviderError(f"{model.model}: the upload returned no file id.")
+        return file_id
 
-    async def delete_file(self, model: ResolvedModel, file_id: str, **kw: Any) -> Any:
+    async def delete_file(self, model: ResolvedModel, file_id: str, **kw: Any) -> None:
         """Remove a file uploaded with :meth:`upload_file` from the vendor."""
         with self._guard(model):
-            return await self._module.afile_delete(
+            await self._module.afile_delete(
                 file_id=file_id, custom_llm_provider=model.vendor, **model.call_kwargs(), **kw)
 
     # ── error translation ────────────────────────────────────────────────

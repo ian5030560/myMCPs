@@ -21,12 +21,12 @@ from mymcps.core.errors import (
     RateLimitError,
     UnsupportedCapabilityError,
 )
-from mymcps.core.responses import field
+from mymcps.core.responses import Segment, Transcription
 
 from .limits import limits_for
 from .planner import plan_chunks
 from .prepare import BYTES_PER_SECOND, PreparedAudio, prepare
-from .timestamps import Segment, Word, format_time, group_words, mark_segments
+from .timestamps import format_time, group_words, mark_segments
 
 # A chunk is planned to fill this much of what one request carries, leaving room for headers.
 SIZE_MARGIN = 0.95
@@ -171,13 +171,13 @@ def _hole(chunk: _Chunk, offset: float, reason) -> Segment:
     return Segment(chunk.start, f"[not transcribed {first}-{last}: {reason}]")
 
 
-def _segments_of(response, chunk_start: float, timestamps: bool, model: str) -> list[Segment]:
+def _segments_of(answer: Transcription, chunk_start: float, timestamps: bool,
+                 model: str) -> list[Segment]:
     """What one answer says, with its times moved to where the chunk starts."""
     if not timestamps:
-        text = _text(response)
-        return [Segment(chunk_start, text)] if text else []
-    lines = _segments(response) or group_words(_words(response))
-    if not lines and _text(response):
+        return [Segment(chunk_start, answer.text)] if answer.text else []
+    lines = answer.segments or group_words(answer.words)
+    if not lines and answer.text:
         raise UnsupportedCapabilityError(
             f"{model} returns no timestamps. Call again without `timestamps`, "
             "or set `transcribe_model` to a model that returns them (for example "
@@ -194,26 +194,3 @@ def _timing_params(vendor: str) -> dict:
     if vendor == "gemini":
         return {"timestamp_granularities": ["word"]}
     return {"response_format": "verbose_json"}
-
-
-def _text(response) -> str:
-    return (field(response, "text") or "").strip()
-
-
-def _segments(response) -> list[Segment]:
-    found = []
-    for segment in field(response, "segments") or []:
-        start, text = field(segment, "start"), (field(segment, "text") or "").strip()
-        if start is not None and text:
-            found.append(Segment(float(start), text))
-    return found
-
-
-def _words(response) -> list[Word]:
-    found = []
-    for word in field(response, "words") or []:
-        start, end = field(word, "start"), field(word, "end")
-        text = field(word, "word") or field(word, "text") or ""
-        if start is not None and text.strip():
-            found.append(Word(float(start), None if end is None else float(end), text))
-    return found

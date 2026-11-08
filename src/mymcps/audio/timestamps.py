@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
-from typing import NamedTuple
+
+from mymcps.core.responses import Segment, Word
 
 # [mm:ss] or [hh:mm:ss], as a model writes it when asked to cite moments.
 _CITED = re.compile(r"\[(\d{1,3}):(\d{2})(?::(\d{2}))?\]")
@@ -17,20 +17,6 @@ _CITED = re.compile(r"\[(\d{1,3}):(\d{2})(?::(\d{2}))?\]")
 def format_time(seconds: float) -> str:
     total = int(max(seconds, 0) + 0.5)          # rounded, half up (not Python's round-to-even)
     return f"{total // 3600:02d}:{total % 3600 // 60:02d}:{total % 60:02d}"
-
-
-class Segment(NamedTuple):
-    """A short timed piece of transcript, as a model returns it or as words are grouped."""
-
-    start: float        # seconds
-    text: str
-
-
-@dataclass(frozen=True)
-class Word:
-    start: float
-    end: float | None
-    text: str
 
 
 # Some models time every word instead of every sentence. Words are grouped into lines of

@@ -15,7 +15,6 @@ from mymcps.core.errors import (
     ProviderError,
     UnsupportedCapabilityError,
 )
-from mymcps.core.responses import field
 
 from .limits import VendorLimits, limits_for
 from .prepare import PreparedAudio, RecordingTooLong, prepare
@@ -52,12 +51,12 @@ class Listener:
                                max_seconds=limits.max_seconds) as audio:
                 question = prompt + (_CITE if timestamps else "")
                 async with self._audio_part(resolved, audio, limits) as part:
-                    response = await self._ctx.llm.complete(resolved, [{"role": "user", "content": [
+                    reply = await self._ctx.llm.complete(resolved, [{"role": "user", "content": [
                         {"type": "text", "text": question}, part]}])
         except RecordingTooLong as exc:
             raise InputError(_TOO_LONG.format(
                 hours=exc.seconds / 3600, limit=exc.limit / 3600, vendor=resolved.vendor)) from exc
-        answer = _answer(response, resolved.model)
+        answer = _answer(reply, resolved.model)
         if not timestamps:
             return answer
         answer, found = shift_cited_times(answer, audio.offset)
@@ -91,11 +90,7 @@ class Listener:
 
     async def _upload(self, resolved, audio: PreparedAudio) -> str:
         with audio.path.open("rb") as handle:
-            uploaded = await self._ctx.llm.upload_file(resolved, handle)
-        file_id = field(uploaded, "id")
-        if not file_id:
-            raise ProviderError(f"{resolved.model}: the upload returned no file id.")
-        return file_id
+            return await self._ctx.llm.upload_file(resolved, handle)
 
     async def _delete(self, resolved, file_id: str) -> None:
         """Leave nothing behind at the vendor. A failure here must not lose the answer."""
@@ -105,12 +100,7 @@ class Listener:
             log.warning("could not delete the uploaded audio %s: %s", file_id, exc)
 
 
-def _answer(response, model: str) -> str:
-    try:
-        content = field(field(field(response, "choices")[0], "message"), "content")
-    except (IndexError, TypeError) as exc:
-        raise ProviderError(f"{model} returned no answer.") from exc
-    text = (content or "").strip()
+def _answer(text: str, model: str) -> str:
     if not text:
         raise ProviderError(f"{model} returned an empty answer.")
     return text
