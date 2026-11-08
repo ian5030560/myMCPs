@@ -14,4 +14,4 @@ Vendors cap a request by size (Gemini 20 MB inline and 9.5 hours per prompt thro
 ## Consequences
 
 - An agent with audio longer than the listening limit gets an error that names two ways forward: work through the recording in order with `start`/`end`, carrying its notes into each next `prompt`, or transcribe it first.
-- A vendor with a duration limit rather than a size limit is not handled yet; one is added only after manual testing confirms it, and a rejected chunk is always reported, never dropped.
+- A duration limit is added to a vendor only after manual testing confirms it. Manual testing found one: Gemini's transcription model takes 1 hour per request, and 30 minutes when word times are asked for, which is shorter than the 20 MB size limit allows (83 minutes), so a chunk may not be longer than the tighter of the size and duration limits (`.scratch/audio-manual-findings/issues/01-gemini-transcribe-token-limit.md`). A rejected chunk is always reported, never dropped.

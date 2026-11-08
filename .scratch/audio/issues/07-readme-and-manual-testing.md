@@ -15,7 +15,7 @@
   - 停頓 0.8 秒與 10 秒上限分出來的行是否合理（對照真實錄音）
   - `listen_audio` 的 `timestamps`：模型是否照 `[hh:mm:ss]` 格式、是否從這段音訊的 0 秒算起（給 `start` 後對照真實位置）
   - 長錄音分 chunk：切點是否落在說話停頓處、chunk 接縫處是否掉字、mp3 `-c copy` 切點造成的時間偏差有多大
-  - 被廠商拒絕的 chunk 的標記，與限流發生在中途時已完成的 chunk 結果會遺失（目前沒有重試）
+  - 被廠商拒絕的 chunk 的標記，與限流發生在中途時的行為（寫票時是「已完成的 chunk 結果會遺失，沒有重試」；實測後依 [audio-manual-findings 04](../../audio-manual-findings/issues/04-chunk-rate-limit.md) 改為等待後重送，用盡才標記）
   - 32 kbps mono 16 kHz mp3 的辨識品質與 Gemini／OpenAI 是否接受此格式
 - [x] 需要的測試音檔（若有）放入 `docs/manual-testing/assets/`，且體積小
 - [x] `tests/docs` 的文件檢查通過
