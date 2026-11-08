@@ -61,7 +61,10 @@ before any paid call and most recordings fit one request. For transcription one 
 - **`transcribe_audio`** splits a recording that is still too big into chunks, cutting at the silence
   nearest each target length so words are not cut in half, and moves segment times back onto the
   original recording. A chunk the provider rejects is marked in the transcript as
-  `[not transcribed hh:mm:ss-hh:mm:ss: reason]`; it is never dropped silently. `timestamps` puts
+  `[not transcribed hh:mm:ss-hh:mm:ss: reason]`; it is never dropped silently. When the provider
+  rate-limits a chunk the server waits as long as the provider asks (up to 2 minutes, 5 resends)
+  and sends it again; if it stays limited, that chunk and the ones after it are marked and the text
+  already finished is returned. `timestamps` puts
   `[hh:mm:ss]` before each line (sentence times from models that give them, such as `openai/whisper-1`;
   word times, grouped into lines at pauses over 0.8 s or after 10 s, from Gemini's transcription
   models) and fails if the model returns no times.

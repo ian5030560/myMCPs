@@ -118,7 +118,7 @@ ffmpeg -f concat -safe 0 -i list.txt -ac 1 -b:a 64k long.mp3
 
 ### 長錄音分 chunk
 
-這幾項需要超過上限的錄音。Gemini 轉錄模型的上限是每個請求 1 小時，要時間（`timestamps`）時是 30 分鐘；OpenAI 是 25 MB（壓縮後約 104 分鐘）。每個 chunk 目標是上限的 9 成、最長 95%，所以 90 分鐘的錄音不要時間會分 2 個 chunk，要時間會分 4 個。Gemini 免費或 Tier 1 帳號每分鐘只能送 1 萬個輸入 token，連續送 chunk 會遇到限流（[.scratch/audio-manual-findings/issues/04-chunk-rate-limit.md](../../.scratch/audio-manual-findings/issues/04-chunk-rate-limit.md)），這幾項需要較高層級的帳號。
+這幾項需要超過上限的錄音。Gemini 轉錄模型的上限是每個請求 1 小時，要時間（`timestamps`）時是 30 分鐘；OpenAI 是 25 MB（壓縮後約 104 分鐘）。每個 chunk 目標是上限的 9 成、最長 95%，所以 90 分鐘的錄音不要時間會分 2 個 chunk，要時間會分 4 個。Gemini 免費或 Tier 1 帳號每分鐘只能送 1 萬個輸入 token，連續送 chunk 會遇到限流，工具會等待後重送，所以這幾項在低層級帳號上要跑很久（記錄實際花了多久）。
 
 | ID | 檢查 | 步驟／輸入 | 預期 | 需求 |
 |---|---|---|---|---|
@@ -126,7 +126,7 @@ ffmpeg -f concat -safe 0 -i list.txt -ac 1 -b:a 64k long.mp3
 | #22 | 切點落在停頓處 | 同 #21，看第一次切點附近（約第 51 到 57 分鐘）的逐字稿，對照標準逐字稿 | 沒有句子被切成兩半、沒有掉字或重複 | `GEMINI_API_KEY`、會計費 |
 | #23 | 時間跨 chunk 正確 | 同 #21，加 `timestamps=true`（會分 4 個 chunk）；在第二個 chunk（約 26 分鐘之後）抽查三行，用 `ffmpeg -ss <時間> -t 8` 切出原檔該處聽 | 內容與該行相符，偏差在 1 秒內 | `GEMINI_API_KEY`、會計費 |
 | #24 | 被拒絕的 chunk 有標記 | 起假的本機服務（第一個請求回 `{"text":"ok"}`，第二個回 400），`[providers.openai]` 的 `api_base` 指向它；110 分鐘的靜音檔（`-t 6600 -b:a 32k`），`model="openai/whisper-1"` | 結果中出現 `[not transcribed 時間-時間: ...]`，其他 chunk 的文字還在，工具沒有失敗 | 無 |
-| #25 | 中途限流 | 同 #24，但第二個請求回 429 | 工具回傳限流的錯誤；已完成的 chunk 的文字不在結果裡（目前的行為，沒有重試）；記錄實際看到的 | 無 |
+| #25 | 中途限流 | 同 #24，但第二個請求之後都回 429（`Retry-After` 給 1 秒以免等太久） | 工具不失敗；第一個 chunk 的文字還在，限流的 chunk 與之後的 chunk 各有 `[not transcribed ...]`；中間有等待（每次約 2 秒），伺服器共收到 1 + 18 次請求（工具試 6 次，LiteLLM 每次自己再送 3 次） | 無 |
 
 ### `listen_audio`
 

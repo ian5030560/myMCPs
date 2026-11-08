@@ -75,6 +75,32 @@ async def test_rate_limit_and_unknown_errors(llm, fake_litellm):
         await llm.complete(resolved(llm), [])
 
 
+@pytest.mark.parametrize("message, expected", [
+    ("Rate limit exceeded. Please retry in 51s or upgrade", 51.0),
+    ("quota used up, retry after 2.5 seconds", 2.5),
+    ("slow down, retrying in 1500ms", 1.5),
+    ("slow down", None),
+])
+async def test_a_rate_limit_carries_the_wait_the_provider_asked_for(
+        llm, fake_litellm, message, expected):
+    fake_litellm.raises = RateLimitError_(message)
+    with pytest.raises(RateLimitError) as err:
+        await llm.complete(resolved(llm), [])
+    assert err.value.retry_after == expected
+
+
+async def test_the_retry_after_header_wins_over_the_text(llm, fake_litellm):
+    class Response:
+        headers = {"retry-after": "12"}
+
+    exc = RateLimitError_("please retry in 99s")
+    exc.response = Response()
+    fake_litellm.raises = exc
+    with pytest.raises(RateLimitError) as err:
+        await llm.complete(resolved(llm), [])
+    assert err.value.retry_after == 12.0
+
+
 def test_importing_servers_does_not_load_litellm():
     code = ("import sys, mymcps.image.server, mymcps.video.server, "
             "mymcps.audio.server; sys.exit(1 if 'litellm' in sys.modules else 0)")

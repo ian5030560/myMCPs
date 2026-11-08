@@ -191,6 +191,80 @@ async def test_a_model_without_times_stops_at_the_first_chunk(
     assert len(fake_litellm.calls) == 1
 
 
+# ── a rate limit is waited out ───────────────────────────────────────────────────────────
+
+class RateLimitError(Exception):
+    """LiteLLM's name for it: the client recognises the error by the class name."""
+
+
+@pytest.fixture
+def pauses(monkeypatch):
+    """No real waiting: the seconds each pause was asked for are recorded."""
+    waits: list[float] = []
+
+    async def pause(seconds):
+        waits.append(seconds)
+
+    monkeypatch.setattr("mymcps.audio.transcriber._pause", pause)
+    return waits
+
+
+def limited(text="Rate limit exceeded. Please retry in 7s"):
+    return RateLimitError(text)
+
+
+async def test_a_rate_limited_chunk_is_sent_again_after_the_wait(
+        server, fake_litellm, long_audio, small_requests, pauses):
+    fake_litellm.queue = [transcription_response("One"), limited(),
+                          transcription_response("Two"), transcription_response("Three")]
+    result = await transcribe(server, path=str(long_audio))
+    assert not result.is_error and text_of(result) == "One\nTwo\nThree"
+    assert pauses == [8.0]                              # the 7 s asked for, and a second more
+    assert len(fake_litellm.transcriptions) == 4        # the second chunk was sent twice
+
+
+async def test_a_wait_the_provider_gives_no_hint_for_uses_a_default(
+        server, fake_litellm, long_audio, small_requests, pauses):
+    fake_litellm.queue = [transcription_response("One"), limited("slow down"),
+                          transcription_response("Two"), transcription_response("Three")]
+    await transcribe(server, path=str(long_audio))
+    assert pauses == [31.0]
+
+
+async def test_a_very_long_wait_is_capped(
+        server, fake_litellm, long_audio, small_requests, pauses):
+    fake_litellm.queue = [transcription_response("One"), limited("retry in 900s"),
+                          transcription_response("Two"), transcription_response("Three")]
+    await transcribe(server, path=str(long_audio))
+    assert pauses == [121.0]
+
+
+async def test_a_chunk_that_stays_limited_keeps_what_is_done_and_marks_the_rest(
+        server, fake_litellm, long_audio, small_requests, pauses):
+    fake_litellm.queue = [transcription_response("One")] + [limited()] * 6
+    result = await transcribe(server, path=str(long_audio))
+    assert not result.is_error
+    first, marker, rest = text_of(result).splitlines()
+    assert first == "One"
+    assert marker.startswith("[not transcribed 00:00:09-00:00:17:") and "retry in 7s" in marker
+    assert rest.startswith("[not transcribed 00:00:17-00:00:25: not sent")
+    assert len(pauses) == 5                             # five waits, six tries, then it gives up
+    assert len(fake_litellm.transcriptions) == 1 + 6    # nothing is sent after that
+
+
+async def test_limited_from_the_start_is_an_error(
+        server, fake_litellm, long_audio, small_requests, pauses):
+    fake_litellm.queue = [limited()] * 6
+    result = await transcribe(server, path=str(long_audio))
+    assert result.is_error and "Rate limit" in text_of(result)
+
+
+async def test_a_single_request_is_also_waited_for(server, fake_litellm, tone, pauses):
+    fake_litellm.queue = [limited(), transcription_response("Done")]
+    result = await transcribe(server, path=str(tone))
+    assert not result.is_error and text_of(result) == "Done" and pauses == [8.0]
+
+
 # ── temporary files ──────────────────────────────────────────────────────────────────────
 
 async def test_no_temporary_files_remain_after_chunking(

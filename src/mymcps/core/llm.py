@@ -156,7 +156,30 @@ class LLMClient:
                         f"(the api_key of provider `{model.provider.name}`).")
             elif model.vendor in STANDARD_KEY_VARS:
                 hint = f"Set the {STANDARD_KEY_VARS[model.vendor]} environment variable."
-        return err_cls(f"{model.model}: {text} ({hint})")
+        error = err_cls(f"{model.model}: {text} ({hint})")
+        if isinstance(error, RateLimitError):
+            error.retry_after = _retry_after(exc, text)
+        return error
+
+
+_RETRY_HINT = re.compile(r"retry(?:ing)?\s+(?:in|after)\s+(\d+(?:\.\d+)?)\s*(ms|s|sec|seconds?)?",
+                         re.I)
+
+
+def _retry_after(exc: Exception, text: str) -> float | None:
+    """The wait a provider asked for: a ``Retry-After`` header, else "retry in 51s" in the text."""
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    try:
+        value = headers.get("retry-after") if headers is not None else None
+        if value is not None:
+            return max(float(value), 0.0)
+    except (TypeError, ValueError, AttributeError):
+        pass
+    found = _RETRY_HINT.search(text)
+    if not found:
+        return None
+    seconds = float(found.group(1))
+    return seconds / 1000 if (found.group(2) or "").lower() == "ms" else seconds
 
 
 def _short(exc: Exception, limit: int = 500) -> str:

@@ -6,13 +6,21 @@ each chunk is transcribed, and the times are moved back onto the original record
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 from mymcps.core.abilities import TRANSCRIPTION
 from mymcps.core.context import AppContext
-from mymcps.core.errors import FFmpegError, ProviderError, UnsupportedCapabilityError
+from mymcps.core.errors import (
+    FFmpegError,
+    ModelError,
+    ProviderError,
+    RateLimitError,
+    UnsupportedCapabilityError,
+)
 
 from .limits import limits_for
 from .planner import plan_chunks
@@ -23,6 +31,17 @@ from .timestamps import Word, format_time, group_words, mark_segments
 SIZE_MARGIN = 0.95
 # Where a cut is aimed at, as a share of the longest allowed chunk.
 TARGET_SHARE = 0.9
+# A rate limit is waited out: as long as the provider asks (capped), and a chunk is sent again at
+# most this many times before it counts as failed.
+RATE_LIMIT_RETRIES = 5
+DEFAULT_WAIT = 30.0
+MAX_WAIT = 120.0
+
+log = logging.getLogger(__name__)
+
+
+async def _pause(seconds: float) -> None:
+    await asyncio.sleep(seconds)
 
 
 @dataclass
@@ -98,23 +117,52 @@ class Transcriber:
         return [_Piece(file, start, end)
                 for file, (start, end) in zip(files, chunks, strict=True)]
 
+    async def _send(self, resolved, piece: _Piece, kw: dict):
+        """One request; a rate limit is waited out and the same piece sent again."""
+        for attempt in range(RATE_LIMIT_RETRIES + 1):
+            try:
+                with piece.path.open("rb") as handle:
+                    return await self._ctx.llm.transcribe(resolved, handle, **kw)
+            except RateLimitError as exc:
+                if attempt == RATE_LIMIT_RETRIES:
+                    raise
+                wait = min(exc.retry_after or DEFAULT_WAIT, MAX_WAIT) + 1
+                log.warning("Rate limited; sending the same chunk again in %.0f s (%d of %d)",
+                            wait, attempt + 1, RATE_LIMIT_RETRIES)
+                await _pause(wait)
+
     async def _run(self, resolved, pieces: list[_Piece], audio: PreparedAudio, kw: dict,
                    timestamps: bool) -> list[tuple[float, str]]:
         """``(start in the prepared audio, text)`` for every piece, in order."""
         parts: list[tuple[float, str]] = []
-        failures: list[ProviderError] = []
-        for piece in pieces:
+        answered = 0
+
+        def hole(piece: _Piece, reason) -> tuple[float, str]:
+            # Never drop a chunk silently: the hole is marked where it is in the transcript.
+            first, last = (format_time(audio.offset + t) for t in (piece.start, piece.end))
+            return piece.start, f"[not transcribed {first}-{last}: {reason}]"
+
+        failures: list[ModelError] = []
+        for index, piece in enumerate(pieces):
             try:
-                with piece.path.open("rb") as handle:
-                    response = await self._ctx.llm.transcribe(resolved, handle, **kw)
+                response = await self._send(resolved, piece, kw)
             except ProviderError as exc:
                 if len(pieces) == 1:
                     raise
-                # Never drop a chunk silently: the hole is marked where it is in the transcript.
                 failures.append(exc)
-                first, last = (format_time(audio.offset + t) for t in (piece.start, piece.end))
-                parts.append((piece.start, f"[not transcribed {first}-{last}: {exc}]"))
+                parts.append(hole(piece, exc))
                 continue
+            except RateLimitError as exc:
+                # The provider keeps refusing: what is done is kept, the rest is marked, and
+                # nothing more is sent.
+                if len(pieces) == 1 or not answered:
+                    raise
+                failures.append(exc)
+                parts.append(hole(piece, exc))
+                parts.extend(hole(rest, "not sent after the rate limit above")
+                             for rest in pieces[index + 1:])
+                break
+            answered += 1
             if not timestamps:
                 if text := _text(response):
                     parts.append((piece.start, text))
@@ -126,7 +174,7 @@ class Transcriber:
                     "or set `transcribe_model` to a model that returns them (for example "
                     "openai/whisper-1).")
             parts.extend((piece.start + start, text) for start, text in lines)
-        if len(failures) == len(pieces) > 1:
+        if not answered and len(pieces) > 1:
             raise failures[0]           # nothing was transcribed at all
         return parts
 

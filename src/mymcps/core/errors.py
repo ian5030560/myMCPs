@@ -50,7 +50,9 @@ class ModelNotFoundError(ModelError):
 
 
 class RateLimitError(ModelError):
-    pass
+    """The provider refused the request for now. ``retry_after`` is the wait it asked for."""
+
+    retry_after: float | None = None
 
 
 class ProviderError(ModelError):
