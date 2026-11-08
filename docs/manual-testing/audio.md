@@ -68,11 +68,12 @@ gzip -dc head.tar.gz | tar -x --wildcards '*/validated.tsv' '*/clip_durations.ts
 ```bash
 curl -r 0-175000000 -o head.tar.bz2 https://data.keithito.com/data/speech/LJSpeech-1.1.tar.bz2
 bzip2 -dc head.tar.bz2 | tar -x --wildcards 'LJSpeech-1.1/wavs/*' 'LJSpeech-1.1/metadata.csv'
+rm "$(ls -t LJSpeech-1.1/wavs/*.wav | head -1)"      # 被截斷的那一個（見下）
 ls LJSpeech-1.1/wavs/*.wav | sed "s/.*/file '&'/" > list.txt
 ffmpeg -f concat -safe 0 -i list.txt -ac 1 -b:a 64k long.mp3
 ```
 
-- `tar` 最後會印出 `Unexpected EOF`，這是預期的（壓縮檔被截斷）；最後一段 wav 可能不完整，`ffmpeg` 會照現有的讀。
+- `tar` 最後會印出 `Unexpected EOF`，這是預期的（壓縮檔被截斷）。壓縮檔裡的順序不是檔名順序，被截斷的是**最後解出來的那個** wav（用 `ls -t` 最新的一個），排序後它會落在錄音中間：留著的話，`ffmpeg` 只讀到它開頭的一小段，錄音會短幾秒，逐字稿缺一句，之後所有行的時間都會比用 wav 長度算出的早幾秒。所以上面先刪掉它。
 - 約 175 MB 的下載可得約 90 分鐘。下載量與長度大致成正比：75 MB 約得 39 分鐘。
 - 預期逐字稿：`metadata.csv` 中，檔名有出現在 `list.txt` 的那些列，依檔名排序，第二欄就是每段的文字。
 - 段與段之間沒有人為的靜音，只有各段自己的前後留白。
