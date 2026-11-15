@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Config redesign: providers, purposes, layered files, extensible servers
 
