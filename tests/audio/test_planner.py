@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from mymcps.audio.planner import plan_chunks
+from mymcps.audio.planner import MARGIN, plan_chunks
 
 EPS = 1e-9
 
@@ -75,19 +75,41 @@ def test_empty_recording_has_no_chunks():
 
 
 def test_cuts_in_the_silence_nearest_the_target():
-    # target 30, window 15..40: silences at 18-19 (12 away), 33-34 (3 away), 39-40 (9 away)
+    # target 30, window 15..40, search distance 3: no silence is that close, so the nearest offer
+    # wins: 18-19 offers 18.75, 33-34 offers 33.25, 39-40 offers 39.25
     chunks = plan_chunks(100, [(18, 19), (39, 40), (33, 34)], 30, 40)
-    assert chunks[0] == (0, pytest.approx(33))
+    assert chunks[0] == (0, pytest.approx(33.25))
 
 
-def test_cuts_at_the_edge_of_a_silence_that_straddles_the_target():
-    # the silence 28-45 contains the target, so the cut is exactly on it
+def test_cuts_in_the_middle_of_a_short_silence_not_at_its_edge():
+    # the silence 33-33.4 does not contain the target; its edge (33) would be the nearest point
+    assert plan_chunks(100, [(33, 33.4)], 30, 40)[0] == (0, pytest.approx(33.2))
+
+
+def test_cuts_clear_of_the_edges_of_a_long_silence():
+    # the silence 28-45 contains the target, so the cut is the target
     assert plan_chunks(100, [(28, 45)], 30, 40)[0] == (0, 30)
+    # the silence 10-25 ends before the target: the cut keeps MARGIN away from its end
+    assert plan_chunks(100, [(10, 25)], 30, 40)[0] == (0, pytest.approx(25 - MARGIN))
+    # and a silence that starts after the target keeps the margin from its start
+    assert plan_chunks(100, [(32, 38)], 30, 40)[0] == (0, pytest.approx(32 + MARGIN))
 
 
-def test_cuts_at_the_nearest_reachable_point_of_a_long_silence():
-    # silence starts at 10 and ends at 25; target 30 is past it, so the cut is its end
-    assert plan_chunks(100, [(10, 25)], 30, 40)[0] == (0, 25)
+def test_prefers_the_longest_silence_near_the_target():
+    # search distance is 3 s: 29-29.4 (0.6 away, short) loses to 31-32.5 (1.5 away, longer)
+    chunks = plan_chunks(100, [(29, 29.4), (31, 32.5)], 30, 40)
+    assert chunks[0] == (0, pytest.approx(31 + MARGIN))
+
+
+def test_a_longer_silence_beyond_the_search_distance_does_not_win():
+    # 29-29.4 is near; the long silence at 36-40 is 6 s away, past the 3 s search distance
+    assert plan_chunks(100, [(29, 29.4), (36, 40)], 30, 40)[0] == (0, pytest.approx(29.2))
+
+
+def test_a_silence_barely_in_reach_still_gets_the_cut():
+    # window is 15..40; the silence ends at 15.1, and the part in reach is too small to keep a
+    # margin, so the cut is its end
+    assert plan_chunks(100, [(14, 15.1)], 30, 40)[0] == (0, pytest.approx(15.1))
 
 
 def test_without_a_silence_in_reach_the_cut_is_at_the_target():

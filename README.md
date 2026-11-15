@@ -58,8 +58,8 @@ before any paid call and most recordings fit one request. For transcription one 
 1 hour (30 minutes when `timestamps` is on) with Gemini's transcription model, and about 104 minutes
 (OpenAI's 25 MB) with OpenAI; chat audio goes inline up to about 83 minutes (Gemini's 20 MB).
 
-- **`transcribe_audio`** splits a recording that is still too big into chunks, cutting at the silence
-  nearest each target length so words are not cut in half, and moves segment times back onto the
+- **`transcribe_audio`** splits a recording that is still too big into chunks, cutting in the middle of
+  the longest silence near each target length so words are not cut in half, and moves segment times back onto the
   original recording. A chunk the provider rejects is marked in the transcript as
   `[not transcribed hh:mm:ss-hh:mm:ss: reason]`; it is never dropped silently. When the provider
   rate-limits a chunk the server waits as long as the provider asks (up to 2 minutes, 5 resends)
