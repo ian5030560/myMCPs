@@ -22,6 +22,27 @@ class MediaInfo:
     height: int | None = None
 
 
+_ADDRESS = re.compile(r"^\[[^\]]*@ [0-9a-fA-Fx]+\]\s*")        # "[mp3 @ 0000019c...] "
+_OPEN_FAILED = re.compile(r"^Error opening input files?: (.+)$")
+
+
+def failure_reason(text: str, limit: int = 500) -> str:
+    """The cause in ffmpeg's error output, without its noise.
+
+    ffmpeg prefixes lines with a memory address, repeats the file's path and ends with a line
+    "Error opening input files: <cause>" when it cannot open the input. That cause is returned
+    alone; any other output is cleaned up (addresses and blank lines removed) and shortened
+    from the front, because the end is where the error is.
+    """
+    lines = [_ADDRESS.sub("", line).strip() for line in text.splitlines()]
+    lines = [line for line in lines if line]
+    for line in reversed(lines):
+        if found := _OPEN_FAILED.match(line):
+            return found[1].strip()
+    joined = " | ".join(lines)
+    return joined if len(joined) <= limit else "…" + joined[-limit:]
+
+
 class FFmpeg:
     def __init__(self, exe: str | Path, workdir: Path | None = None):
         self._exe = str(exe)
@@ -67,8 +88,8 @@ class FFmpeg:
         cmd = [self._exe, "-hide_banner", "-loglevel", "error", "-y", *args]
         result = await anyio.run_process(cmd, check=False)
         if result.returncode != 0:
-            tail = result.stderr.decode(errors="replace").strip()[-800:]
-            raise FFmpegError(f"ffmpeg failed ({result.returncode}): {tail}")
+            reason = failure_reason(result.stderr.decode(errors="replace"))
+            raise FFmpegError(f"ffmpeg failed ({result.returncode}): {reason}")
         return result.stderr.decode(errors="replace")
 
     def _range(self, start, end) -> list[str]:
@@ -86,7 +107,7 @@ class FFmpeg:
         text = result.stderr.decode(errors="replace")
         m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", text)
         if not m:
-            raise FFmpegError(f"Could not read media info: {text.strip()[-300:]}")
+            raise FFmpegError(f"Could not read media info: {failure_reason(text)}")
         duration = int(m[1]) * 3600 + int(m[2]) * 60 + float(m[3])
         video = re.search(r"Stream #.*Video:.*?(\d{2,5})x(\d{2,5})", text)
         return MediaInfo(
@@ -163,7 +184,7 @@ class FFmpeg:
             check=False)
         text = result.stderr.decode(errors="replace")
         if result.returncode != 0:
-            raise FFmpegError(f"ffmpeg failed ({result.returncode}): {text.strip()[-800:]}")
+            raise FFmpegError(f"ffmpeg failed ({result.returncode}): {failure_reason(text)}")
         silences: list[tuple[float, float]] = []
         start: float | None = None
         for kind, value in re.findall(r"silence_(start|end): (-?\d+(?:\.\d+)?)", text):

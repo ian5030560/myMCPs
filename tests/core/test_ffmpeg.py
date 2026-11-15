@@ -3,7 +3,7 @@ import subprocess
 import pytest
 
 from mymcps.core.errors import FFmpegError
-from mymcps.core.ffmpeg import FFmpeg
+from mymcps.core.ffmpeg import FFmpeg, failure_reason
 
 
 @pytest.mark.parametrize("value,expected", [
@@ -49,8 +49,38 @@ async def test_probe(ff, clip):
 async def test_probe_not_media(ff, tmp_path):
     bad = tmp_path / "x.mp4"
     bad.write_bytes(b"not media")
-    with pytest.raises(FFmpegError):
+    with pytest.raises(FFmpegError) as raised:
         await ff.probe(bad)
+    assert str(raised.value) == (
+        "Could not read media info: Invalid data found when processing input")
+
+
+OPEN_FAILED = (
+    "[mp3 @ 0000019cf9446540] Format mp3 detected only with low score of 1, misdetection "
+    "possible!\n"
+    "[mp3 @ 0000019cf9446540] Failed to find two consecutive MPEG audio frames.\n"
+    "[in#0 @ 0000019cf9446140] Error opening input: Invalid data found when processing input\n"
+    "\n\nError opening input file C:/Users/x/bad.mp3.\n\n\n"
+    "Error opening input files: Invalid data found when processing input\n")
+
+
+def test_an_open_failure_is_reduced_to_its_cause():
+    assert failure_reason(OPEN_FAILED) == "Invalid data found when processing input"
+    assert failure_reason("Error opening input files: No such file or directory\n") == (
+        "No such file or directory")
+
+
+def test_other_output_loses_addresses_and_blank_lines():
+    assert failure_reason("[aac @ 0x1f] first\n\n\nplain line\n") == "first | plain line"
+
+
+def test_a_long_output_keeps_its_end():
+    reason = failure_reason("a" * 400 + "\n" + "b" * 400, limit=100)
+    assert len(reason) <= 101 and reason.startswith("…") and reason.endswith("b" * 99)
+
+
+def test_empty_output_gives_an_empty_reason():
+    assert failure_reason("") == ""
 
 
 @pytest.mark.ffmpeg

@@ -91,7 +91,7 @@ ffmpeg -f concat -safe 0 -i list.txt -ac 1 -b:a 64k long.mp3
 | #3 | `list_models` | 呼叫 `list_models` | 兩個用途（`listen`、`transcribe`）顯示設定的模型；沒有金鑰或端點 | 無 |
 | #4 | 沒有金鑰 | 不設任何金鑰，用 `speech-en.mp3` 呼叫 `transcribe_audio` 與 `listen_audio` | 各是可讀的一行錯誤，指出要設哪個環境變數，沒有 Traceback | 無 |
 | #5 | 用途沒設定模型 | 設定檔不寫 `transcribe_model`（再試 `listen_model`），呼叫對應的工具 | 錯誤訊息指出該欄位與 `[audio]` 區段 | 無 |
-| #6 | 壞輸入在呼叫模型之前被拒絕 | 不設金鑰，依序給：不存在的路徑、內容是文字的 `.mp3`、沒有音軌的影片 | 各是可讀的輸入錯誤（不是缺金鑰），代表在呼叫模型之前就失敗 | 無 |
+| #6 | 壞輸入在呼叫模型之前被拒絕 | 不設金鑰，依序給：不存在的路徑、內容是文字的 `.mp3`、沒有音軌的影片 | 各是可讀的輸入錯誤（不是缺金鑰），代表在呼叫模型之前就失敗；文字檔的訊息只有一行原因（「Invalid data found when processing input」），沒有記憶體位址、空行或完整路徑 | 無 |
 | #7 | 時間範圍不合理 | 對 `speech-en.mp3` 給 `start=60`、`start=20 end=10`、`start=abc` | 各是可讀的錯誤，不是 Traceback | 無 |
 | #8 | 模型不收音訊 | `transcribe_audio` 的 `model` 給 `openai/gpt-3.5-turbo`；`listen_audio` 同樣給它 | 錯誤指出該模型不能做這件事與該設哪個欄位，沒有呼叫模型 | 無 |
 

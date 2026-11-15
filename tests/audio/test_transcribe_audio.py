@@ -97,7 +97,9 @@ async def test_a_file_that_is_not_media(server, fake_litellm, tmp_path):
     text = tmp_path / "notes.mp3"
     text.write_text("not audio")
     result = await transcribe(server, path=str(text))
-    assert result.is_error and "notes.mp3" in text_of(result)
+    message = text_of(result)
+    assert result.is_error and "notes.mp3" in message
+    assert "0x" not in message and "\n\n" not in message and str(tmp_path) not in message
     assert fake_litellm.calls == []
 
 
