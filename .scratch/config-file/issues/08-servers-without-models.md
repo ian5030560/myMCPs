@@ -4,7 +4,7 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] A test-only server that declares no purposes offers no `list_models` tool.
 - [x] Starting it does not import LiteLLM.

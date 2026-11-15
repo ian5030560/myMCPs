@@ -6,7 +6,7 @@ The existing three servers are rewritten to conform, not deleted: their tools ke
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] Configuring `[image] gen_model` makes `generate_image` call that model; `edit_image` uses `edit_model`.
 - [x] A server with an unconfigured purpose still starts; a tool that needs it fails with a message naming the `<purpose>_model` field and the section to set it in.

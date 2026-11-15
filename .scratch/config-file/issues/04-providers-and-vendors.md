@@ -6,7 +6,7 @@ The image server is rewritten to conform: its vendor checks read the provider's 
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] A provider named after a vendor (for example `[providers.stability]`) applies to every model of that vendor, including raw model strings passed by the agent.
 - [x] A provider whose name is not a vendor applies only to aliases that link to it; a raw `openai/...` string never reaches it.

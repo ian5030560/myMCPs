@@ -4,7 +4,7 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The server file is layered over the shared file for that server only; both are optional at their default location.
 - [x] When `--config` or `MYMCPS_CONFIG` names a file, that file alone is the global layer and no server file is loaded.

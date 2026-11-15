@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] An unknown field at the top level, in a model alias or in the server's own section fails startup.
 - [x] A `*_model` field the server does not declare fails startup.

@@ -4,7 +4,7 @@
 
 **Blocked by:** 06, 07, 08
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The example config uses the new format: providers, model aliases, purposes with suggested models to copy (there are no defaults), the server file and project layer.
 - [x] The README covers the new server names and `mymcps-<name>` commands, registration examples, the provider rules, the layers and their precedence, and variables.

@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The `allowed_dirs` setting, `MYMCPS_ALLOWED_DIRS` and every read and write path check are removed; a tool reads a local file anywhere on disk.
 - [x] `MYMCPS_OUTPUT_DIR`, `MYMCPS_IMAGE_MODEL`, `MYMCPS_VIDEO_MODEL`, `MYMCPS_AUDIO_MODEL` and `MYMCPS_TRANSCRIPTION_MODEL` no longer have any effect; `MYMCPS_CONFIG` still selects the config file.

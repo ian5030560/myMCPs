@@ -4,7 +4,7 @@
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] The `capabilities` field is removed and now rejected as an unknown field.
 - [x] A model absent from LiteLLM's table is "unknown" on every ability, even though LiteLLM's own helpers answer "no" for unmapped models.

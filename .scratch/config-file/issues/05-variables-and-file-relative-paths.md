@@ -4,7 +4,7 @@
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] `${NAME}` expands in every string value, including nested passthrough parameters; built-in variables win over environment variables of the same name.
 - [x] `$$` produces a literal `$`; expansion is single-pass and never expands its own output.
