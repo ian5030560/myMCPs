@@ -101,7 +101,8 @@ ffmpeg -f concat -safe 0 -i list.txt -ac 1 -b:a 64k long.mp3
 |---|---|---|---|---|
 | #9 | OpenAI 接受壓縮格式 | `model="openai/whisper-1"`，`speech-en.mp3` | 成功；逐字稿與腳本只差大小寫與標點，或極少數字詞 | `OPENAI_API_KEY`、會計費 |
 | #10 | Gemini 接受壓縮格式 | `model="gemini/gemini-3.5-transcribe"`，`speech-en.mp3` | 成功；逐字稿與腳本只差大小寫與標點，或極少數字詞 | `GEMINI_API_KEY`、會計費 |
-| #11 | `language` | 上面做好的中文錄音，`language="zh"` | 輸出是中文，沒有被當成別的語言 | `GEMINI_API_KEY`、會計費 |
+| #11 | `language` | 上面做好的中文錄音，`language="zh"` | 輸出是中文（簡體：`zh` 會被 LiteLLM 送成 `zh-CN`），沒有被當成別的語言 | `GEMINI_API_KEY`、會計費 |
+| #34 | 繁體中文 | 上面做好的中文錄音，`language="zh-TW"`，不要 `timestamps` | 輸出是繁體字（「臺北市政府警察局中山分局」「兩國總統」），不是簡體；同樣的呼叫加上 `timestamps=true` 時 Gemini 仍寫簡體，這是已知行為 | `GEMINI_API_KEY`、會計費 |
 | #12 | `start`／`end` | `speech-en.mp3`，`start=13 end=22 timestamps=true`，用 `openai/whisper-1` | 只轉出第 3、4 句；第一行時間約 `00:00:13`（從原檔起算，不是 `00:00:00`） | `OPENAI_API_KEY`、會計費 |
 | #13 | URL 輸入 | `path` 給 repo 在 raw.githubusercontent.com 上的 `speech-en.mp3` 網址 | 成功；系統暫存資料夾裡找不到 `mymcps-dl-*` | `OPENAI_API_KEY`、會計費 |
 | #14 | 模型沒有時間 | `model="openai/gpt-4o-transcribe"`，`timestamps=true` | 錯誤指出該模型沒有時間，並建議改用能回傳時間的模型 | `OPENAI_API_KEY`、會計費 |
@@ -115,7 +116,7 @@ ffmpeg -f concat -safe 0 -i list.txt -ac 1 -b:a 64k long.mp3
 | #17 | Gemini 逐字時間確實回來 | `model="gemini/gemini-3.5-transcribe"`，`timestamps=true` | 有時間，沒有出現「returns no timestamps」 | `GEMINI_API_KEY`、會計費 |
 | #18 | Gemini 逐字欄位的格式 | 同 #17，檢視輸出 | 英文行的字之間恰有一個空格，沒有黏在一起或雙空格，標點位置合理；記錄 `word` 是否已含空格或標點 | `GEMINI_API_KEY`、會計費 |
 | #19 | 停頓與 10 秒上限分行 | 同 #17 | 六句各自一行（句間 1.5 秒的靜音大於 0.8 秒的門檻），行首時間與上表相差在 1 秒內，沒有超過 10 秒的行 | `GEMINI_API_KEY`、會計費 |
-| #20 | 中文接字 | 上面做好的中文錄音，`model="gemini/gemini-3.5-transcribe"`，`timestamps=true` | 中文字之間沒有空格；與六句腳本相符（標點與異體字除外） | `GEMINI_API_KEY`、會計費 |
+| #20 | 中文接字 | 上面做好的中文錄音，`model="gemini/gemini-3.5-transcribe"`，`timestamps=true` | 中文字之間沒有空格；分成六行，行首時間與六句的起點相符（±2 秒）；內容與腳本只差簡繁字形、標點與異體字（`timestamps` 開著時 Gemini 一律寫簡體，見 02 號票），偶爾有同音字辨識錯誤也算通過 | `GEMINI_API_KEY`、會計費 |
 
 ### 長錄音分 chunk
 
@@ -155,7 +156,7 @@ ffmpeg -f concat -safe 0 -i list.txt -ac 1 -b:a 64k long.mp3
 2. Gemini 金鑰，先用短素材：#10、#17～#19、#26～#28。
 3. Gemini 金鑰，再跑長錄音（最貴）：先 #29～#32（找出需要補票的問題），再 #21～#23。
 4. OpenAI 金鑰：#9、#12、#13、#14、#16。
-5. 中文錄音做好後（需要 `MDC_API_KEY`）：#11、#20。
+5. 中文錄音做好後（需要 `MDC_API_KEY`）：#11、#20、#34。
 
 長錄音的項目會花最多錢，第一次只做最短能觸發分 chunk 或 Files API 的長度（約 85 分鐘），不要用數小時的檔案。
 

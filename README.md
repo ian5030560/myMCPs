@@ -46,7 +46,7 @@ The image tools have only been tested against a mocked LiteLLM; real API calls a
 
 | Tool | What it does |
 |---|---|
-| `transcribe_audio` | Speech to text with the `transcribe_model` you configured. `path`, `start`, `end`, `language`, `timestamps`, `model`. |
+| `transcribe_audio` | Speech to text with the `transcribe_model` you configured. `path`, `start`, `end`, `language`, `timestamps`, `model`. For Chinese, `language` also picks the script: `zh` is Simplified, `zh-TW` or `zh-Hant` asks for Traditional (Gemini ignores it, and writes Simplified, when `timestamps` is on). |
 | `listen_audio` | Answers a question about a recording with the `listen_model` you configured (who speaks, tone, music, summaries, translation). `path`, `prompt`, `start`, `end`, `timestamps`, `model`. |
 | `list_models` | The model each job uses (or "not configured") and the configured aliases; never shows keys. |
 

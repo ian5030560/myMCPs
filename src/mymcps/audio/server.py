@@ -33,8 +33,11 @@ class AudioServer(BaseMediaServer):
                 path: Local path or http(s) URL of the recording.
                 start: Where to begin (seconds, mm:ss or hh:mm:ss). Defaults to the beginning.
                 end: Where to stop. Defaults to the end.
-                language: Language spoken, as an ISO-639-1 code such as "en" or "zh" (helps
-                    accuracy when you know it).
+                language: Language spoken, as an ISO-639-1 code such as "en", or a region
+                    code such as "zh-TW" (helps accuracy when you know it). For Chinese the
+                    code also picks the script: bare "zh" means Simplified (it is sent as
+                    zh-CN), "zh-TW" or "zh-Hant" asks for Traditional. Gemini ignores that
+                    choice when `timestamps` is on and then writes Simplified.
                 timestamps: Put [hh:mm:ss] before each segment, counted from the start of the
                     original recording. Fails if the model returns no times.
                 model: Model alias or LiteLLM string. Defaults to the configured
